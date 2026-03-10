@@ -632,14 +632,15 @@ app.get('/', (c) => {
 
         @media (max-width: 600px) {
             body { padding: 1rem 0.5rem; }
-            .card { padding: 1rem; border-radius: 1rem; }
+            .card { padding: 1rem 0.75rem; border-radius: 0.75rem; }
             .input-group { flex-direction: column; }
-            button { width: 100%; }
-            .vod-item { flex-direction: column; align-items: stretch; gap: 0.75rem; }
-            .vod-item > div:first-child { flex-direction: column; align-items: flex-start !important; }
-            .vod-item img { width: 100% !important; min-width: 100% !important; height: auto !important; aspect-ratio: 16/9; }
-            .vod-item .vod-info { width: 100%; margin-top: 0.5rem; }
-            .vod-item button.danger { align-self: flex-end; width: auto !important; margin-left: 0 !important; }
+            .input-group button { width: 100%; }
+            .vod-item { padding: 0.6rem; gap: 0.4rem; }
+            .vod-item img { width: 80px !important; min-width: 80px !important; height: 45px !important; }
+            .vod-item .vod-info { margin-top: 0; }
+            .vod-item .vod-info div:first-child { font-size: 0.85rem !important; }
+            .vod-item .vod-info div:last-child { font-size: 0.65rem !important; }
+            .vod-item button.danger { width: auto !important; padding: 0.3rem 0.5rem !important; margin-left: auto !important; align-self: center; }
             .obs-grid { grid-template-columns: 1fr !important; }
             .playlist-url { flex-direction: column; align-items: stretch; }
             code { margin-bottom: 0.5rem; }
