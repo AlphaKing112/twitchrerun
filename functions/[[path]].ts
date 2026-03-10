@@ -254,7 +254,8 @@ app.post('/api/twitch/stats/settings', async (c) => {
     liveTimerTZ: body.liveTimerTZ || existing?.liveTimerTZ || 'local',
     timerColor: body.timerColor || existing?.timerColor || '#ffffff',
     timerLabelColor: body.timerLabelColor || existing?.timerLabelColor || '#9146ff',
-    timerSize: body.timerSize || existing?.timerSize || 52
+    timerSize: body.timerSize || existing?.timerSize || 52,
+    timerLabelSize: body.timerLabelSize || existing?.timerLabelSize || 18
   }));
 
   return c.json({ success: true, username, broadcasterId });
@@ -603,6 +604,7 @@ app.get('/overlay/countdown', async (c) => {
   const timerColor = settings.timerColor || '#ffffff';
   const labelColor = settings.timerLabelColor || '#9146ff';
   const timerSize = settings.timerSize || 52;
+  const labelSizeSetting = settings.timerLabelSize || Math.round(timerSize * 0.35);
 
   return c.html(`
 <!DOCTYPE html>
@@ -620,7 +622,7 @@ app.get('/overlay/countdown', async (c) => {
             transition: all 0.3s ease;
         }
         .label {
-            font-size: ${Math.round(timerSize * 0.3)}px;
+            font-size: ${labelSizeSetting}px;
             font-weight: 800;
             color: ${labelColor};
             text-transform: uppercase;
@@ -1077,7 +1079,7 @@ app.get('/', (c) => {
                 </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
                 <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
                     <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label Color</label>
                     <div style="display: flex; gap: 0.5rem;">
@@ -1093,7 +1095,11 @@ app.get('/', (c) => {
                     </div>
                 </div>
                 <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
-                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Size (<span id="timerSizeVal">52</span>px)</label>
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label Size (<span id="timerLabelSizeVal">18</span>px)</label>
+                    <input type="range" id="twTimerLabelSize" min="10" max="100" value="18" style="width: 100%;" oninput="document.getElementById('timerLabelSizeVal').innerText = this.value">
+                </div>
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Number Size (<span id="timerSizeVal">52</span>px)</label>
                     <input type="range" id="twTimerSize" min="20" max="150" value="52" style="width: 100%;" oninput="document.getElementById('timerSizeVal').innerText = this.value">
                 </div>
             </div>
@@ -1307,7 +1313,8 @@ app.get('/', (c) => {
                         token, followerGoal, subGoal, followerColor, subColor, 
                         followerTextColor, subTextColor, labelSize, valueSize, goalSize, scrollSpeed, followerCount, pollingInterval,
                         liveTimer, liveTimerLabel, liveTimerTZ,
-                        timerColor, timerLabelColor, timerSize
+                        timerColor, timerLabelColor, timerSize,
+                        timerLabelSize: parseInt(document.getElementById('twTimerLabelSize').value)
                     }),
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1651,6 +1658,10 @@ app.get('/', (c) => {
                         document.getElementById('twTimerSize').value = settings.timerSize;
                         document.getElementById('timerSizeVal').innerText = settings.timerSize;
                     }
+                    if (settings.timerLabelSize) {
+                        document.getElementById('twTimerLabelSize').value = settings.timerLabelSize;
+                        document.getElementById('timerLabelSizeVal').innerText = settings.timerLabelSize;
+                    }
                     if (settings.obsAddress) document.getElementById('obsAddress').value = settings.obsAddress;
                     if (settings.obsPassword) document.getElementById('obsPassword').value = settings.obsPassword;
                     if (settings.obsSourceName) document.getElementById('obsSourceName').value = settings.obsSourceName;
@@ -1734,6 +1745,7 @@ app.get('/', (c) => {
             autoSave();
         };
         document.getElementById('twTimerSize').onchange = autoSave;
+        document.getElementById('twTimerLabelSize').onchange = autoSave;
         
         // OBS Auto-save
         const saveObsSettings = async () => {
