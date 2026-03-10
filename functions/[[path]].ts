@@ -451,7 +451,7 @@ const overlayHtml = (title: string, field: string, goalField: string, colorField
             overflow: hidden;
             width: fit-content;
         }
-        .content { display: flex; justify-content: space-between; align-items: center; gap: 30px; }
+        .content { display: flex; justify-content: center; align-items: center; gap: 30px; }
         .label { font-size: var(--label-size); color: var(--label-color); text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600; }
         .value-group { display: flex; align-items: baseline; gap: 8px; }
         .value { font-size: var(--value-size); text-shadow: 0 0 10px var(--glow); font-weight: 800; line-height: 1; }
