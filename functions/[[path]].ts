@@ -270,13 +270,14 @@ app.get('/api/twitch/stats/settings', async (c) => {
     hasToken: !!settings.token,
     obsAddress: settings.obsAddress || 'localhost:44555',
     obsPassword: settings.obsPassword || '',
-    obsSourceName: settings.obsSourceName || 'twitchreruns'
+    obsSourceName: settings.obsSourceName || 'twitchreruns',
+    obsMode: settings.obsMode || 'local'
   });
 });
 
 // API: Save OBS Settings
 app.post('/api/obs/settings', async (c) => {
-  const { address, password, sourceName } = await c.req.json();
+  const { address, password, sourceName, mode } = await c.req.json();
   const data = await c.env.RERUN_STORE.get('_twitch_stats_settings');
   const settings = data ? JSON.parse(data) : {};
   
@@ -284,7 +285,8 @@ app.post('/api/obs/settings', async (c) => {
     ...settings,
     obsAddress: address,
     obsPassword: password,
-    obsSourceName: sourceName
+    obsSourceName: sourceName,
+    obsMode: mode || 'local'
   }));
   
   return c.json({ success: true });
@@ -651,10 +653,20 @@ app.get('/', (c) => {
 
         <section class="card" id="obsConfigCard">
             <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">OBS Connection</h2>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="font-size: 0.8rem; color: #a1a1aa;">Connection Mode</label>
+                <select id="obsMode" onchange="toggleObsMode()" style="width: 100%; margin-top: 0.25rem; background: #121214; color: #f0f0f5; border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.6rem; font-family: inherit; font-size: 0.9rem;">
+                    <option value="local">🏠 Local (Home Network)</option>
+                    <option value="remote">🌐 Remote (Cloudflare Tunnel / DDNS)</option>
+                </select>
+            </div>
+
             <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                 <div>
-                   <label style="font-size: 0.8rem; color: #a1a1aa;">OBS Address (usually localhost:44555)</label>
+                   <label style="font-size: 0.8rem; color: #a1a1aa;" id="obsAddressLabel">OBS Address</label>
                    <input type="text" id="obsAddress" value="localhost:44555" style="width: 100%;">
+                   <div id="obsAddressHint" style="font-size: 0.7rem; color: #52525b; margin-top: 0.25rem;">e.g. localhost:44555</div>
                 </div>
                 <div>
                    <label style="font-size: 0.8rem; color: #a1a1aa;">OBS Password</label>
@@ -1087,7 +1099,18 @@ app.get('/', (c) => {
 
             // Auto-handle protocol
             if (!address.startsWith('ws://') && !address.startsWith('wss://')) {
-                address = 'ws://' + address;
+                // Use wss:// for remote hostnames, ws:// for local IPs
+                const isLocal = address.startsWith('localhost') || 
+                                address.startsWith('127.') || 
+                                address.startsWith('192.168.') || 
+                                address.startsWith('10.') ||
+                                /^172\.(1[6-9]|2\d|3[01])\./.test(address);
+                address = (isLocal ? 'ws://' : 'wss://') + address;
+            }
+            
+            // Strip port from cloudflare tunnel URLs (they don't use ports)
+            if (address.includes('.trycloudflare.com:') || address.includes('.pages.dev:')) {
+                address = address.replace(/:\d+$/, '');
             }
 
             obsStatus.innerText = 'Connecting...';
@@ -1326,6 +1349,16 @@ app.get('/', (c) => {
                     if (settings.obsAddress) document.getElementById('obsAddress').value = settings.obsAddress;
                     if (settings.obsPassword) document.getElementById('obsPassword').value = settings.obsPassword;
                     if (settings.obsSourceName) document.getElementById('obsSourceName').value = settings.obsSourceName;
+                    
+                    // Restore connection mode
+                    const savedMode = settings.obsMode || 'local';
+                    document.getElementById('obsMode').value = savedMode;
+                    if (savedMode === 'remote') {
+                        const savedRemote = localStorage.getItem('obsRemoteAddress') || settings.obsAddress || '';
+                        document.getElementById('obsAddress').value = savedRemote;
+                        document.getElementById('obsAddressHint').innerHTML = 'e.g. pgp-kits-retro-railway.trycloudflare.com or obscontrol.ddns.net:44555';
+                        document.getElementById('obsAddressLabel').innerText = 'OBS Address (Remote)';
+                    }
                 }
             } catch(e) {}
         }
@@ -1380,14 +1413,41 @@ app.get('/', (c) => {
             const address = document.getElementById('obsAddress').value.trim();
             const password = document.getElementById('obsPassword').value;
             const sourceName = document.getElementById('obsSourceName').value;
+            const mode = document.getElementById('obsMode').value;
             await fetch('/api/obs/settings', {
                 method: 'POST',
-                body: JSON.stringify({ address, password, sourceName }),
+                body: JSON.stringify({ address, password, sourceName, mode }),
                 headers: { 'Content-Type': 'application/json' }
             });
         };
         
-        document.getElementById('obsAddress').onchange = saveObsSettings;
+        function toggleObsMode() {
+            const mode = document.getElementById('obsMode').value;
+            const addressInput = document.getElementById('obsAddress');
+            const hint = document.getElementById('obsAddressHint');
+            const label = document.getElementById('obsAddressLabel');
+            
+            if (mode === 'local') {
+                addressInput.value = 'localhost:44555';
+                hint.innerHTML = 'e.g. localhost:44555';
+                label.innerText = 'OBS Address (Local)';
+            } else {
+                // Restore saved remote address or prompt
+                const saved = localStorage.getItem('obsRemoteAddress') || '';
+                addressInput.value = saved;
+                hint.innerHTML = 'e.g. pgp-kits-retro-railway.trycloudflare.com or obscontrol.ddns.net:44555';
+                label.innerText = 'OBS Address (Remote)';
+            }
+            saveObsSettings();
+        }
+        
+        document.getElementById('obsAddress').onchange = () => {
+            const mode = document.getElementById('obsMode').value;
+            if (mode === 'remote') {
+                localStorage.setItem('obsRemoteAddress', document.getElementById('obsAddress').value.trim());
+            }
+            saveObsSettings();
+        };
         document.getElementById('obsPassword').onchange = saveObsSettings;
         document.getElementById('obsSourceName').onchange = saveObsSettings;
 
