@@ -635,9 +635,11 @@ app.get('/', (c) => {
             .card { padding: 1rem; border-radius: 1rem; }
             .input-group { flex-direction: column; }
             button { width: 100%; }
-            .vod-item { flex-direction: column; align-items: stretch; }
-            .vod-item img { width: 100% !important; height: auto !important; aspect-ratio: 16/9; }
-            .vod-item button.danger { align-self: flex-end; }
+            .vod-item { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+            .vod-item > div:first-child { flex-direction: column; align-items: flex-start !important; }
+            .vod-item img { width: 100% !important; min-width: 100% !important; height: auto !important; aspect-ratio: 16/9; }
+            .vod-item .vod-info { width: 100%; margin-top: 0.5rem; }
+            .vod-item button.danger { align-self: flex-end; width: auto !important; margin-left: 0 !important; }
             .obs-grid { grid-template-columns: 1fr !important; }
             .playlist-url { flex-direction: column; align-items: stretch; }
             code { margin-bottom: 0.5rem; }
@@ -913,7 +915,7 @@ app.get('/', (c) => {
                                 \`<div style="position: absolute; bottom: 0; left: 0; right: 0; background: rgba(34, 197, 94, 0.9); color: white; font-size: 0.6rem; padding: 2px; text-align: center; border-bottom-left-radius: 0.5rem; border-bottom-right-radius: 0.5rem;">READY</div>\`
                             }
                         </div>
-                        <div style="min-width: 0; flex: 1;">
+                        <div class="vod-info" style="min-width: 0; flex: 1;">
                             <div style="font-weight:600; margin-bottom: 0.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.95rem;">\${v.title}</div>
                             <div style="font-size:0.75rem; color:#a1a1aa; line-height: 1;">\${v.author || 'Unknown'} &bull; \${v.duration || '0s'}</div>
                             \${v.error ? \`<div style="font-size: 0.65rem; color: #ef4444; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">\${v.error}</div>\` : ''}
