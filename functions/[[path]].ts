@@ -246,9 +246,10 @@ app.post('/api/twitch/stats/settings', async (c) => {
     labelSize: labelSize || existing?.labelSize || 16,
     valueSize: valueSize || existing?.valueSize || 38,
     goalSize: goalSize || existing?.goalSize || 22,
-    scrollSpeed: body.scrollSpeed || existing?.scrollSpeed || 15,
     followerCount: body.followerCount || existing?.followerCount || 10,
-    pollingInterval: body.pollingInterval || existing?.pollingInterval || 30
+    pollingInterval: body.pollingInterval || existing?.pollingInterval || 30,
+    liveTimer: body.liveTimer || existing?.liveTimer || '',
+    liveTimerLabel: body.liveTimerLabel || existing?.liveTimerLabel || 'NEXT LIVE STREAM'
   }));
 
   return c.json({ success: true, username, broadcasterId });
@@ -274,6 +275,8 @@ app.get('/api/twitch/stats/settings', async (c) => {
     scrollSpeed: settings.scrollSpeed || 15,
     followerCount: settings.followerCount || 10,
     pollingInterval: settings.pollingInterval || 30,
+    liveTimer: settings.liveTimer || '',
+    liveTimerLabel: settings.liveTimerLabel || 'NEXT LIVE STREAM',
     hasToken: !!settings.token,
     obsAddress: settings.obsAddress || 'localhost:44555',
     obsPassword: settings.obsPassword || '',
@@ -578,6 +581,93 @@ app.get('/overlay/recent-followers', (c) => {
   `);
 });
 
+// Overlay: Going Live Countdown
+app.get('/overlay/countdown', async (c) => {
+  const data = await c.env.RERUN_STORE.get('_twitch_stats_settings');
+  const settings = data ? JSON.parse(data) : {};
+  const targetTime = settings.liveTimer || '';
+  const label = settings.liveTimerLabel || 'NEXT LIVE STREAM';
+
+  return c.html(`
+<!DOCTYPE html>
+<html>
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 20px; color: white; font-family: 'Outfit', sans-serif; overflow: hidden; background: transparent; }
+        .container {
+            background: rgba(18, 18, 20, 0.85);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(145, 70, 255, 0.3);
+            border-radius: 20px;
+            padding: 25px 40px;
+            display: inline-block;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .label {
+            font-size: 14px;
+            font-weight: 700;
+            color: #9146ff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+            text-shadow: 0 0 10px rgba(145, 70, 255, 0.5);
+        }
+        .timer {
+            font-size: 52px;
+            font-weight: 900;
+            display: flex;
+            gap: 15px;
+            line-height: 1;
+        }
+        .unit { display: flex; flex-direction: column; align-items: center; }
+        .unit span { font-size: 10px; text-transform: uppercase; color: #a1a1aa; margin-top: 5px; font-weight: 400; letter-spacing: 1px; }
+        .separator { color: #9146ff; animation: blink 1s ease-in-out infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .expired { color: #ef4444; font-size: 32px; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div class="container" id="cont" style="display: none;">
+        <div class="label" id="timerLabel">${label}</div>
+        <div id="countdown" class="timer">
+            <div class="unit"><div id="h">00</div><span>hrs</span></div>
+            <div class="separator">:</div>
+            <div class="unit"><div id="m">00</div><span>min</span></div>
+            <div class="separator">:</div>
+            <div class="unit"><div id="s">00</div><span>sec</span></div>
+        </div>
+    </div>
+    <script>
+        const target = new Date("${targetTime}").getTime();
+        function update() {
+            const now = new Date().getTime();
+            const diff = target - now;
+            if (isNaN(target) || target === 0) return;
+            
+            document.getElementById('cont').style.display = 'inline-block';
+
+            if (diff <= 0) {
+                document.getElementById('countdown').innerHTML = '<div class="expired">STREAM STARTING SOON!</div>';
+                return;
+            }
+
+            const h = Math.floor(diff / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((diff % (1000 * 60)) / 1000);
+
+            document.getElementById('h').innerText = String(h).padStart(2, '0');
+            document.getElementById('m').innerText = String(m).padStart(2, '0');
+            document.getElementById('s').innerText = String(s).padStart(2, '0');
+        }
+        setInterval(update, 1000);
+        update();
+    </script>
+</body>
+</html>
+  `);
+});
+
 // Serve the Frontend UI (HTML/CSS)
 app.get('/', (c) => {
   return c.html(`
@@ -850,6 +940,28 @@ app.get('/', (c) => {
                     <input type="range" id="twPollingInterval" min="5" max="300" value="30" step="5" style="width: 100%;" oninput="document.getElementById('pollingVal').innerText = this.value">
                 </div>
             </div>
+
+            <div class="card" style="margin-bottom: 1.5rem; background: #1a1a1e; border: 1px solid var(--border); border-radius: 1rem; overflow: hidden;">
+                <div style="background: #252529; padding: 1rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem;">⏳ Going Live Countdown</h3>
+                </div>
+                <div style="padding: 1.5rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                        <div>
+                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label (e.g. NEXT LIVE STREAM)</label>
+                            <input type="text" id="twLiveLabel" placeholder="NEXT LIVE STREAM" style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #121214; color: white;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Target Date & Time</label>
+                            <input type="datetime-local" id="twLiveTime" style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #121214; color: white;">
+                        </div>
+                    </div>
+                    <div class="input-group" style="padding: 0.75rem; background: #121214; border-radius: 0.5rem; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                        <span id="countdownOverlayUrl" style="font-family: monospace; font-size: 0.8rem; color: #a1a1aa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 1rem;"></span>
+                        <button onclick="copyText('countdownOverlayUrl')" style="background: #9146ff; color: white; border: none; padding: 0.4rem 0.8rem; border-radius: 0.3rem; font-size: 0.75rem; cursor: pointer;">Copy</button>
+                    </div>
+                </div>
+            </div>
             <p style="font-size: 0.75rem; color: #71717a; margin-bottom: 1rem;">
                 Need a token? <a href="https://twitchtokengenerator.com/" target="_blank" style="color: #9146ff; text-decoration: none; font-weight: 600;">Click here</a> to generate one with <code>channel:read:subscriptions</code>, <code>moderator:read:followers</code>, and <code>channel:manage:broadcast</code> scopes.
             </p>
@@ -1062,6 +1174,8 @@ app.get('/', (c) => {
             const scrollSpeed = parseInt(document.getElementById('twScrollSpeed').value);
             const followerCount = parseInt(document.getElementById('twFollowerCount').value);
             const pollingInterval = parseInt(document.getElementById('twPollingInterval').value);
+            const liveTimer = document.getElementById('twLiveTime').value;
+            const liveTimerLabel = document.getElementById('twLiveLabel').value.trim() || 'NEXT LIVE STREAM';
             
             if (!token && !followerGoal && !subGoal && !followerColor) return;
             
@@ -1077,7 +1191,8 @@ app.get('/', (c) => {
                     method: 'POST',
                     body: JSON.stringify({ 
                         token, followerGoal, subGoal, followerColor, subColor, 
-                        followerTextColor, subTextColor, labelSize, valueSize, goalSize, scrollSpeed, followerCount, pollingInterval
+                        followerTextColor, subTextColor, labelSize, valueSize, goalSize, scrollSpeed, followerCount, pollingInterval,
+                        liveTimer, liveTimerLabel
                     }),
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1092,6 +1207,7 @@ app.get('/', (c) => {
                     document.getElementById('followPreview').src = '/overlay/followers?t=' + Date.now();
                     document.getElementById('subPreview').src = '/overlay/subs?t=' + Date.now();
                     document.getElementById('recentPreview').src = '/overlay/recent-followers?t=' + Date.now();
+                    document.getElementById('countdownOverlayUrl').innerText = window.location.origin + '/overlay/countdown?t=' + Date.now();
                 } else {
                     if (btn) alert('Error: ' + data.error);
                 }
@@ -1344,6 +1460,7 @@ app.get('/', (c) => {
                 document.getElementById('followOverlayUrl').innerText = window.location.origin + '/overlay/followers';
                 document.getElementById('subOverlayUrl').innerText = window.location.origin + '/overlay/subs';
                 document.getElementById('recentOverlayUrl').innerText = window.location.origin + '/overlay/recent-followers';
+                document.getElementById('countdownOverlayUrl').innerText = window.location.origin + '/overlay/countdown';
 
                 // Previews
                 document.getElementById('followPreview').src = '/overlay/followers';
@@ -1400,6 +1517,9 @@ app.get('/', (c) => {
                         document.getElementById('twPollingInterval').value = settings.pollingInterval;
                         document.getElementById('pollingVal').innerText = settings.pollingInterval;
                     }
+                    if (settings.obsAddress) document.getElementById('obsAddress').value = settings.obsAddress;
+                    if (settings.liveTimer) document.getElementById('twLiveTime').value = settings.liveTimer;
+                    if (settings.liveTimerLabel) document.getElementById('twLiveLabel').value = settings.liveTimerLabel;
                     if (settings.obsAddress) document.getElementById('obsAddress').value = settings.obsAddress;
                     if (settings.obsPassword) document.getElementById('obsPassword').value = settings.obsPassword;
                     if (settings.obsSourceName) document.getElementById('obsSourceName').value = settings.obsSourceName;
@@ -1462,6 +1582,8 @@ app.get('/', (c) => {
         document.getElementById('twScrollSpeed').onchange = autoSave;
         document.getElementById('twFollowerCount').onchange = autoSave;
         document.getElementById('twPollingInterval').onchange = autoSave;
+        document.getElementById('twLiveTime').onchange = autoSave;
+        document.getElementById('twLiveLabel').onchange = autoSave;
         
         // OBS Auto-save
         const saveObsSettings = async () => {
