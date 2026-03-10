@@ -250,7 +250,10 @@ app.post('/api/twitch/stats/settings', async (c) => {
     pollingInterval: body.pollingInterval || existing?.pollingInterval || 30,
     liveTimer: body.liveTimer || existing?.liveTimer || '',
     liveTimerLabel: body.liveTimerLabel || existing?.liveTimerLabel || 'NEXT LIVE STREAM',
-    liveTimerTZ: body.liveTimerTZ || existing?.liveTimerTZ || 'local'
+    liveTimerTZ: body.liveTimerTZ || existing?.liveTimerTZ || 'local',
+    timerColor: body.timerColor || existing?.timerColor || '#ffffff',
+    timerLabelColor: body.timerLabelColor || existing?.timerLabelColor || '#9146ff',
+    timerSize: body.timerSize || existing?.timerSize || 52
   }));
 
   return c.json({ success: true, username, broadcasterId });
@@ -279,6 +282,9 @@ app.get('/api/twitch/stats/settings', async (c) => {
     liveTimer: settings.liveTimer || '',
     liveTimerLabel: settings.liveTimerLabel || 'NEXT LIVE STREAM',
     liveTimerTZ: settings.liveTimerTZ || 'local',
+    timerColor: settings.timerColor || '#ffffff',
+    timerLabelColor: settings.timerLabelColor || '#9146ff',
+    timerSize: settings.timerSize || 52,
     hasToken: !!settings.token,
     obsAddress: settings.obsAddress || 'localhost:44555',
     obsPassword: settings.obsPassword || '',
@@ -590,6 +596,9 @@ app.get('/overlay/countdown', async (c) => {
   const targetTime = settings.liveTimer || '';
   const label = settings.liveTimerLabel || 'NEXT LIVE STREAM';
   const tz = settings.liveTimerTZ || 'local';
+  const timerColor = settings.timerColor || '#ffffff';
+  const labelColor = settings.timerLabelColor || '#9146ff';
+  const timerSize = settings.timerSize || 52;
 
   return c.html(`
 <!DOCTYPE html>
@@ -599,35 +608,37 @@ app.get('/overlay/countdown', async (c) => {
     <style>
         body { margin: 0; padding: 20px; color: white; font-family: 'Outfit', sans-serif; overflow: hidden; background: transparent; }
         .container {
-            background: rgba(18, 18, 20, 0.85);
-            backdrop-filter: blur(10px);
-            border: 2px solid rgba(145, 70, 255, 0.3);
-            border-radius: 20px;
-            padding: 25px 40px;
+            background: rgba(12, 12, 14, 0.9);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-left: 5px solid ${labelColor};
+            border-radius: 12px;
+            padding: 20px 35px;
             display: inline-block;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            box-shadow: 0 15px 45px rgba(0,0,0,0.6);
+            transition: all 0.3s ease;
         }
         .label {
-            font-size: 14px;
-            font-weight: 700;
-            color: #9146ff;
+            font-size: ${Math.round(timerSize * 0.3)}px;
+            font-weight: 800;
+            color: ${labelColor};
             text-transform: uppercase;
-            letter-spacing: 2px;
-            margin-bottom: 5px;
-            text-shadow: 0 0 10px rgba(145, 70, 255, 0.5);
+            letter-spacing: 3px;
+            margin-bottom: 8px;
+            opacity: 0.9;
         }
         .timer {
-            font-size: 52px;
+            font-size: ${timerSize}px;
             font-weight: 900;
             display: flex;
-            gap: 15px;
+            gap: 12px;
             line-height: 1;
+            color: ${timerColor};
         }
         .unit { display: flex; flex-direction: column; align-items: center; }
-        .unit span { font-size: 10px; text-transform: uppercase; color: #a1a1aa; margin-top: 5px; font-weight: 400; letter-spacing: 1px; }
-        .separator { color: #9146ff; animation: blink 1s ease-in-out infinite; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        .expired { color: #ef4444; font-size: 32px; font-weight: 700; }
+        .unit span { font-size: ${Math.round(timerSize * 0.2)}px; text-transform: uppercase; color: #a1a1aa; margin-top: 6px; font-weight: 600; letter-spacing: 1px; }
+        .separator { color: ${labelColor}; transform: translateY(-4px); font-weight: 400; }
+        .expired { color: #ef4444; font-size: ${Math.round(timerSize * 0.7)}px; font-weight: 900; letter-spacing: -1px; }
     </style>
 </head>
 <body>
@@ -1004,6 +1015,27 @@ app.get('/', (c) => {
                             </select>
                         </div>
                     </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                        <div>
+                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label Color</label>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input type="color" id="twTimerLabelColor" value="#9146ff" style="width: 40px; height: 40px; border: none; background: none; cursor: pointer;">
+                                <input type="text" id="twTimerLabelHex" value="#9146ff" style="flex: 1; padding: 0.5rem; border-radius: 0.4rem; border: 1px solid var(--border); background: #121214; color: white; font-family: monospace;">
+                            </div>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Number Color</label>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input type="color" id="twTimerColor" value="#ffffff" style="width: 40px; height: 40px; border: none; background: none; cursor: pointer;">
+                                <input type="text" id="twTimerHex" value="#ffffff" style="flex: 1; padding: 0.5rem; border-radius: 0.4rem; border: 1px solid var(--border); background: #121214; color: white; font-family: monospace;">
+                            </div>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Overall Size (<span id="timerSizeVal">52</span>px)</label>
+                            <input type="range" id="twTimerSize" min="20" max="150" value="52" style="width: 100%;" oninput="document.getElementById('timerSizeVal').innerText = this.value">
+                        </div>
+                    </div>
                     <div class="input-group" style="padding: 0.75rem; background: #121214; border-radius: 0.5rem; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
                         <span id="countdownOverlayUrl" style="font-family: monospace; font-size: 0.8rem; color: #a1a1aa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 1rem;"></span>
                         <button onclick="copyText('countdownOverlayUrl')" style="background: #9146ff; color: white; border: none; padding: 0.4rem 0.8rem; border-radius: 0.3rem; font-size: 0.75rem; cursor: pointer;">Copy</button>
@@ -1225,6 +1257,9 @@ app.get('/', (c) => {
             const liveTimer = document.getElementById('twLiveTime').value;
             const liveTimerLabel = document.getElementById('twLiveLabel').value.trim() || 'NEXT LIVE STREAM';
             const liveTimerTZ = document.getElementById('twLiveTZ').value;
+            const timerColor = document.getElementById('twTimerColor').value;
+            const timerLabelColor = document.getElementById('twTimerLabelColor').value;
+            const timerSize = parseInt(document.getElementById('twTimerSize').value);
             
             if (!token && !followerGoal && !subGoal && !followerColor) return;
             
@@ -1241,7 +1276,8 @@ app.get('/', (c) => {
                     body: JSON.stringify({ 
                         token, followerGoal, subGoal, followerColor, subColor, 
                         followerTextColor, subTextColor, labelSize, valueSize, goalSize, scrollSpeed, followerCount, pollingInterval,
-                        liveTimer, liveTimerLabel, liveTimerTZ
+                        liveTimer, liveTimerLabel, liveTimerTZ,
+                        timerColor, timerLabelColor, timerSize
                     }),
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1570,6 +1606,19 @@ app.get('/', (c) => {
                     if (settings.liveTimer) document.getElementById('twLiveTime').value = settings.liveTimer;
                     if (settings.liveTimerLabel) document.getElementById('twLiveLabel').value = settings.liveTimerLabel;
                     if (settings.liveTimerTZ) document.getElementById('twLiveTZ').value = settings.liveTimerTZ;
+                    
+                    if (settings.timerColor) {
+                        document.getElementById('twTimerColor').value = settings.timerColor;
+                        document.getElementById('twTimerHex').value = settings.timerColor;
+                    }
+                    if (settings.timerLabelColor) {
+                        document.getElementById('twTimerLabelColor').value = settings.timerLabelColor;
+                        document.getElementById('twTimerLabelHex').value = settings.timerLabelColor;
+                    }
+                    if (settings.timerSize) {
+                        document.getElementById('twTimerSize').value = settings.timerSize;
+                        document.getElementById('timerSizeVal').innerText = settings.timerSize;
+                    }
                     if (settings.obsAddress) document.getElementById('obsAddress').value = settings.obsAddress;
                     if (settings.obsPassword) document.getElementById('obsPassword').value = settings.obsPassword;
                     if (settings.obsSourceName) document.getElementById('obsSourceName').value = settings.obsSourceName;
@@ -1635,6 +1684,24 @@ app.get('/', (c) => {
         document.getElementById('twLiveTime').onchange = autoSave;
         document.getElementById('twLiveLabel').onchange = autoSave;
         document.getElementById('twLiveTZ').onchange = autoSave;
+
+        document.getElementById('twTimerColor').oninput = (e) => {
+            document.getElementById('twTimerHex').value = e.target.value;
+            autoSave();
+        };
+        document.getElementById('twTimerHex').onchange = (e) => {
+            document.getElementById('twTimerColor').value = e.target.value;
+            autoSave();
+        };
+        document.getElementById('twTimerLabelColor').oninput = (e) => {
+            document.getElementById('twTimerLabelHex').value = e.target.value;
+            autoSave();
+        };
+        document.getElementById('twTimerLabelHex').onchange = (e) => {
+            document.getElementById('twTimerLabelColor').value = e.target.value;
+            autoSave();
+        };
+        document.getElementById('twTimerSize').onchange = autoSave;
         
         // OBS Auto-save
         const saveObsSettings = async () => {
