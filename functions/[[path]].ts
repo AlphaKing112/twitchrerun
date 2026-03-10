@@ -755,9 +755,9 @@ app.get('/', (c) => {
         .subtitle { color: #a1a1aa; font-size: 1rem; }
         .card { background: var(--glass); backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 1.5rem; padding: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-bottom: 1.5rem; }
         .input-group { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
-        input, select { flex: 1; min-width: 0; background: #121214; border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.75rem 1rem; color: white; font-size: 1rem; transition: 0.2s; font-family: inherit; }
+        input, select { flex: 1; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; background: #121214; border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.75rem 1rem; color: white; font-size: 1rem; transition: 0.2s; font-family: inherit; }
         input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(145, 70, 255, 0.2); }
-        select { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1em; padding-right: 2.5rem; }
+        select { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1em; padding-right: 2.5rem; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
         button { cursor: pointer; border: none; border-radius: 0.75rem; padding: 0.75rem 1.5rem; font-size: 1rem; font-weight: 600; transition: 0.2s; background: var(--primary); color: white; }
         button:hover { background: var(--primary-hover); transform: translateY(-1px); }
         button.secondary { background: #27272a; padding: 0.5rem 1rem; font-size: 0.8rem; }
@@ -801,6 +801,9 @@ app.get('/', (c) => {
             .vod-item .vod-info div:last-child { font-size: 0.65rem !important; }
             .vod-item button.danger { width: auto !important; padding: 0.3rem 0.5rem !important; margin-left: auto !important; align-self: center; }
             .obs-grid { grid-template-columns: minmax(0, 1fr) !important; }
+            .obs-grid > div { min-width: 0; max-width: 100%; overflow: hidden; }
+            input, select { padding: 0.6rem !important; font-size: 0.9rem !important; }
+            select { padding-right: 2rem !important; background-position: right 0.5rem center !important; }
             .playlist-url { flex-direction: column; align-items: stretch; }
             code { margin-bottom: 0.5rem; display: block; width: 100%; }
             .url-grid { grid-template-columns: minmax(0, 1fr) !important; }
