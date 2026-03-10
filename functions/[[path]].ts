@@ -1329,6 +1329,7 @@ app.get('/', (c) => {
                     // Refresh specific previews or all
                     const now = Date.now();
                     const targets = previewIds || ['followPreview', 'subPreview', 'recentPreview', 'countdownPreview'];
+                    console.log('Refreshing previews:', targets);
                     targets.forEach(id => {
                         const el = document.getElementById(id);
                         if (el) {
