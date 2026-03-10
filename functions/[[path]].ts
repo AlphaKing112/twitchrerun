@@ -800,10 +800,10 @@ app.get('/', (c) => {
             .vod-item .vod-info div:first-child { font-size: 0.85rem !important; }
             .vod-item .vod-info div:last-child { font-size: 0.65rem !important; }
             .vod-item button.danger { width: auto !important; padding: 0.3rem 0.5rem !important; margin-left: auto !important; align-self: center; }
-            .obs-grid { grid-template-columns: 1fr !important; }
+            .obs-grid { grid-template-columns: minmax(0, 1fr) !important; }
             .playlist-url { flex-direction: column; align-items: stretch; }
-            code { margin-bottom: 0.5rem; }
-            .url-grid { grid-template-columns: 1fr !important; }
+            code { margin-bottom: 0.5rem; display: block; width: 100%; }
+            .url-grid { grid-template-columns: minmax(0, 1fr) !important; }
         }
     </style>
 </head>
