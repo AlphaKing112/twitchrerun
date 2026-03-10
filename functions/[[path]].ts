@@ -1208,19 +1208,12 @@ app.get('/', (c) => {
 
                 obsShuffle = !obsShuffle;
                 
-                // Also update the playlist URL to include/exclude shuffle param
+                // Rebuild the URL correctly to ensure there's a "?" and no double parameters
                 if (inputSettings.playlist && inputSettings.playlist[0]) {
-                    try {
-                        const u = new URL(inputSettings.playlist[0].value);
-                        u.searchParams.set('shuffle', obsShuffle);
-                        u.searchParams.set('t', Date.now());
-                        inputSettings.playlist[0].value = u.toString();
-                    } catch (e) {
-                        // Fallback for non-absolute URLs if any
-                        let url = inputSettings.playlist[0].value.split('?')[0];
-                        url += '?shuffle=' + obsShuffle + '&t=' + Date.now();
-                        inputSettings.playlist[0].value = url;
-                    }
+                    // Strip EVERYTHING after /api/playlist (including ? and &)
+                    let cleanBase = inputSettings.playlist[0].value.split('/api/playlist')[0] + '/api/playlist';
+                    inputSettings.playlist[0].value = cleanBase + '?shuffle=' + obsShuffle + '&t=' + Date.now();
+                    console.log('[OBS Debug] Rebuilt URL:', inputSettings.playlist[0].value);
                 }
 
                 await obs.call('SetInputSettings', {
