@@ -249,7 +249,8 @@ app.post('/api/twitch/stats/settings', async (c) => {
     followerCount: body.followerCount || existing?.followerCount || 10,
     pollingInterval: body.pollingInterval || existing?.pollingInterval || 30,
     liveTimer: body.liveTimer || existing?.liveTimer || '',
-    liveTimerLabel: body.liveTimerLabel || existing?.liveTimerLabel || 'NEXT LIVE STREAM'
+    liveTimerLabel: body.liveTimerLabel || existing?.liveTimerLabel || 'NEXT LIVE STREAM',
+    liveTimerTZ: body.liveTimerTZ || existing?.liveTimerTZ || 'local'
   }));
 
   return c.json({ success: true, username, broadcasterId });
@@ -277,6 +278,7 @@ app.get('/api/twitch/stats/settings', async (c) => {
     pollingInterval: settings.pollingInterval || 30,
     liveTimer: settings.liveTimer || '',
     liveTimerLabel: settings.liveTimerLabel || 'NEXT LIVE STREAM',
+    liveTimerTZ: settings.liveTimerTZ || 'local',
     hasToken: !!settings.token,
     obsAddress: settings.obsAddress || 'localhost:44555',
     obsPassword: settings.obsPassword || '',
@@ -587,6 +589,7 @@ app.get('/overlay/countdown', async (c) => {
   const settings = data ? JSON.parse(data) : {};
   const targetTime = settings.liveTimer || '';
   const label = settings.liveTimerLabel || 'NEXT LIVE STREAM';
+  const tz = settings.liveTimerTZ || 'local';
 
   return c.html(`
 <!DOCTYPE html>
@@ -639,11 +642,41 @@ app.get('/overlay/countdown', async (c) => {
         </div>
     </div>
     <script>
-        const target = new Date("${targetTime}").getTime();
+        const timeStr = "${targetTime}";
+        const selectedTz = "${tz}";
+
+        function getTargetTime() {
+            if (!timeStr) return null;
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            const now = new Date();
+            
+            // Create target date based on the chosen timezone
+            const tz = selectedTz === 'local' ? Intl.DateTimeFormat().resolvedOptions().timeZone : selectedTz;
+            
+            // Get current time in selected TZ
+            const nowInTz = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+            
+            const target = new Date(nowInTz);
+            target.setHours(hours, minutes, 0, 0);
+
+            // If target is already in the past, move to tomorrow
+            if (target < nowInTz) {
+                target.setDate(target.getDate() + 1);
+            }
+
+            // Convert target TZ time back to browser local time for the interval
+            const localOffset = now.getTimezoneOffset() * 60000;
+            const tzOffset = now.getTime() - nowInTz.getTime();
+            
+            return target.getTime() + tzOffset;
+        }
+
+        const target = getTargetTime();
+
         function update() {
+            if (!target) return;
             const now = new Date().getTime();
             const diff = target - now;
-            if (isNaN(target) || target === 0) return;
             
             document.getElementById('cont').style.display = 'inline-block';
 
@@ -946,14 +979,29 @@ app.get('/', (c) => {
                     <h3 style="margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem;">⏳ Going Live Countdown</h3>
                 </div>
                 <div style="padding: 1.5rem;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                         <div>
                             <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label (e.g. NEXT LIVE STREAM)</label>
                             <input type="text" id="twLiveLabel" placeholder="NEXT LIVE STREAM" style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #121214; color: white;">
                         </div>
                         <div>
-                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Target Date & Time</label>
-                            <input type="datetime-local" id="twLiveTime" style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #121214; color: white;">
+                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Pick Time</label>
+                            <input type="time" id="twLiveTime" style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #121214; color: white;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Timezone</label>
+                            <select id="twLiveTZ" style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #121214; color: white;">
+                                <option value="local">Detect (Browser)</option>
+                                <option value="UTC">UTC</option>
+                                <option value="America/New_York">Eastern Time (ET)</option>
+                                <option value="America/Chicago">Central Time (CT)</option>
+                                <option value="America/Denver">Mountain Time (MT)</option>
+                                <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                                <option value="Europe/London">London (GMT/BST)</option>
+                                <option value="Europe/Paris">Central Europe (CET)</option>
+                                <option value="Asia/Tokyo">Tokyo (JST)</option>
+                                <option value="Australia/Sydney">Sydney (AEST)</option>
+                            </select>
                         </div>
                     </div>
                     <div class="input-group" style="padding: 0.75rem; background: #121214; border-radius: 0.5rem; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
@@ -1176,6 +1224,7 @@ app.get('/', (c) => {
             const pollingInterval = parseInt(document.getElementById('twPollingInterval').value);
             const liveTimer = document.getElementById('twLiveTime').value;
             const liveTimerLabel = document.getElementById('twLiveLabel').value.trim() || 'NEXT LIVE STREAM';
+            const liveTimerTZ = document.getElementById('twLiveTZ').value;
             
             if (!token && !followerGoal && !subGoal && !followerColor) return;
             
@@ -1192,7 +1241,7 @@ app.get('/', (c) => {
                     body: JSON.stringify({ 
                         token, followerGoal, subGoal, followerColor, subColor, 
                         followerTextColor, subTextColor, labelSize, valueSize, goalSize, scrollSpeed, followerCount, pollingInterval,
-                        liveTimer, liveTimerLabel
+                        liveTimer, liveTimerLabel, liveTimerTZ
                     }),
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1520,6 +1569,7 @@ app.get('/', (c) => {
                     if (settings.obsAddress) document.getElementById('obsAddress').value = settings.obsAddress;
                     if (settings.liveTimer) document.getElementById('twLiveTime').value = settings.liveTimer;
                     if (settings.liveTimerLabel) document.getElementById('twLiveLabel').value = settings.liveTimerLabel;
+                    if (settings.liveTimerTZ) document.getElementById('twLiveTZ').value = settings.liveTimerTZ;
                     if (settings.obsAddress) document.getElementById('obsAddress').value = settings.obsAddress;
                     if (settings.obsPassword) document.getElementById('obsPassword').value = settings.obsPassword;
                     if (settings.obsSourceName) document.getElementById('obsSourceName').value = settings.obsSourceName;
@@ -1584,6 +1634,7 @@ app.get('/', (c) => {
         document.getElementById('twPollingInterval').onchange = autoSave;
         document.getElementById('twLiveTime').onchange = autoSave;
         document.getElementById('twLiveLabel').onchange = autoSave;
+        document.getElementById('twLiveTZ').onchange = autoSave;
         
         // OBS Auto-save
         const saveObsSettings = async () => {
