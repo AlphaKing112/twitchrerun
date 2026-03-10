@@ -781,11 +781,11 @@ app.get('/', (c) => {
             content: "✓"; color: white; font-size: 14px; font-weight: bold;
         }
         
-        .playlist-url { background: rgba(145, 70, 255, 0.05); border: 1px dashed var(--primary); padding: 1rem; border-radius: 0.75rem; display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; overflow: hidden; gap: 0.5rem; }
-        code { color: #d49aff; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 0; flex: 1; }
+        .playlist-url { background: rgba(145, 70, 255, 0.05); border: 1px dashed var(--primary); padding: 0.6rem 1rem; border-radius: 0.75rem; display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; overflow: hidden; gap: 0.75rem; width: 100%; box-sizing: border-box; }
+        code { color: #d49aff; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; font-size: 0.85rem; }
         .empty { text-align: center; padding: 2rem; color: #71717a; }
 
-        @media (max-width: 600px) {
+        @media (max-width: 768px) {
             body { padding: 1rem 0.5rem; }
             .card { padding: 1rem 0.75rem; border-radius: 0.75rem; }
             .input-group { flex-direction: column; }
@@ -799,6 +799,7 @@ app.get('/', (c) => {
             .obs-grid { grid-template-columns: 1fr !important; }
             .playlist-url { flex-direction: column; align-items: stretch; }
             code { margin-bottom: 0.5rem; }
+            .url-grid { grid-template-columns: 1fr !important; }
         }
     </style>
 </head>
@@ -994,7 +995,7 @@ app.get('/', (c) => {
                 </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="url-grid" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem;">
                 <div>
                     <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Followers URL</label>
                     <div class="playlist-url">
