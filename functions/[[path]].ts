@@ -439,7 +439,7 @@ const overlayHtml = (title: string, field: string, goalField: string, colorField
 <head>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@800&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; padding: 10px; font-family: 'Outfit', sans-serif; color: white; overflow: hidden; }
+        body { margin: 0; padding: 10px; font-family: 'Outfit', sans-serif; color: white; overflow: hidden; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
         .wrapper { width: fit-content; min-width: 300px; white-space: nowrap; }
         .stat-box { 
             position: relative;
@@ -449,6 +449,7 @@ const overlayHtml = (title: string, field: string, goalField: string, colorField
             border: 1px solid rgba(255,255,255,0.1); 
             backdrop-filter: blur(10px);
             overflow: hidden;
+            width: fit-content;
         }
         .content { display: flex; justify-content: space-between; align-items: center; gap: 30px; }
         .label { font-size: var(--label-size); color: var(--label-color); text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600; }
@@ -609,9 +610,9 @@ app.get('/overlay/countdown', async (c) => {
 <head>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; padding: 20px; color: white; font-family: 'Outfit', sans-serif; overflow: hidden; background: transparent; }
+        body { margin: 0; padding: 0; color: white; font-family: 'Outfit', sans-serif; overflow: hidden; background: transparent; display: flex; justify-content: center; align-items: center; min-height: 100vh; text-align: center; }
         .container {
-            padding: 0;
+            padding: 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
