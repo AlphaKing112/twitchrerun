@@ -834,7 +834,7 @@ app.get('/', (c) => {
             <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
                 <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
                     <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Scroll Speed (<span id="scrollSpeedVal">15</span>s)</label>
-                    <input type="range" id="twScrollSpeed" min="5" max="60" value="15" style="width: 100%;" oninput="document.getElementById('scrollSpeedVal').innerText = this.value">
+                    <input type="range" id="twScrollSpeed" min="5" max="120" value="15" style="width: 100%;" oninput="document.getElementById('scrollSpeedVal').innerText = this.value">
                 </div>
                 <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
                     <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Follower Count (<span id="followerCountVal">10</span>)</label>
