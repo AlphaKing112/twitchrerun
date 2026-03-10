@@ -1054,6 +1054,7 @@ app.get('/', (c) => {
                 <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
                     <iframe id="followPreview" src="" style="border: 1px solid var(--border); width: 280px; height: 80px; border-radius: 8px; background: #000;"></iframe>
                     <iframe id="subPreview" src="" style="border: 1px solid var(--border); width: 280px; height: 80px; border-radius: 8px; background: #000;"></iframe>
+                    <iframe id="countdownPreview" src="" style="border: 1px solid var(--border); width: 280px; height: 80px; border-radius: 8px; background: #000;"></iframe>
                     <iframe id="recentPreview" src="" style="border: 1px solid var(--border); width: 576px; height: 50px; border-radius: 8px; background: #000;"></iframe>
                 </div>
             </div>
@@ -1078,6 +1079,13 @@ app.get('/', (c) => {
                     <div class="playlist-url">
                         <code id="recentOverlayUrl"></code>
                         <button class="secondary" onclick="copyText('recentOverlayUrl')">Copy</button>
+                    </div>
+                </div>
+                <div>
+                    <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 0.5rem;">Countdown Timer Overlay URL:</p>
+                    <div class="playlist-url">
+                        <code id="countdownLink"></code>
+                        <button class="secondary" onclick="copyText('countdownLink')">Copy</button>
                     </div>
                 </div>
             </div>
@@ -1291,6 +1299,8 @@ app.get('/', (c) => {
                     document.getElementById('followPreview').src = '/overlay/followers?t=' + Date.now();
                     document.getElementById('subPreview').src = '/overlay/subs?t=' + Date.now();
                     document.getElementById('recentPreview').src = '/overlay/recent-followers?t=' + Date.now();
+                    document.getElementById('countdownPreview').src = '/overlay/countdown?t=' + Date.now();
+                    document.getElementById('countdownLink').innerText = window.location.origin + '/overlay/countdown?t=' + Date.now();
                     document.getElementById('countdownOverlayUrl').innerText = window.location.origin + '/overlay/countdown?t=' + Date.now();
                 } else {
                     if (btn) alert('Error: ' + data.error);
@@ -1544,12 +1554,14 @@ app.get('/', (c) => {
                 document.getElementById('followOverlayUrl').innerText = window.location.origin + '/overlay/followers';
                 document.getElementById('subOverlayUrl').innerText = window.location.origin + '/overlay/subs';
                 document.getElementById('recentOverlayUrl').innerText = window.location.origin + '/overlay/recent-followers';
+                document.getElementById('countdownLink').innerText = window.location.origin + '/overlay/countdown';
                 document.getElementById('countdownOverlayUrl').innerText = window.location.origin + '/overlay/countdown';
 
                 // Previews
                 document.getElementById('followPreview').src = '/overlay/followers';
                 document.getElementById('subPreview').src = '/overlay/subs';
                 document.getElementById('recentPreview').src = '/overlay/recent-followers';
+                document.getElementById('countdownPreview').src = '/overlay/countdown';
                 
                 // Fetch saved settings
                 const res = await fetch('/api/twitch/stats/settings');
