@@ -242,7 +242,8 @@ app.post('/api/twitch/stats/settings', async (c) => {
     valueSize: valueSize || existing?.valueSize || 38,
     goalSize: goalSize || existing?.goalSize || 22,
     scrollSpeed: body.scrollSpeed || existing?.scrollSpeed || 15,
-    followerCount: body.followerCount || existing?.followerCount || 10
+    followerCount: body.followerCount || existing?.followerCount || 10,
+    pollingInterval: body.pollingInterval || existing?.pollingInterval || 30
   }));
 
   return c.json({ success: true, username, broadcasterId });
@@ -267,6 +268,7 @@ app.get('/api/twitch/stats/settings', async (c) => {
     goalSize: settings.goalSize || 22,
     scrollSpeed: settings.scrollSpeed || 15,
     followerCount: settings.followerCount || 10,
+    pollingInterval: settings.pollingInterval || 30,
     hasToken: !!settings.token,
     obsAddress: settings.obsAddress || 'localhost:44555',
     obsPassword: settings.obsPassword || '',
@@ -324,7 +326,8 @@ app.get('/api/stats', async (c) => {
       subTextColor: settings.subTextColor || '#a1a1aa',
       labelSize: settings.labelSize || 16,
       valueSize: settings.valueSize || 38,
-      goalSize: settings.goalSize || 22
+      goalSize: settings.goalSize || 22,
+      pollingInterval: settings.pollingInterval || 30
     });
   } catch(e) { return c.json({ error: true }); }
 });
@@ -496,8 +499,14 @@ const overlayHtml = (title: string, field: string, goalField: string, colorField
             }
           } catch(e) {}
         }
-        setInterval(update, 30000);
-        update();
+        function startSync() {
+            update();
+            fetch('/api/stats').then(r => r.json()).then(data => {
+                const interval = (data.pollingInterval || 30) * 1000;
+                setInterval(update, interval);
+            });
+        }
+        startSync();
     </script>
 </body>
 </html>
@@ -550,8 +559,14 @@ app.get('/overlay/recent-followers', (c) => {
                 }
             } catch(e) {}
         }
-        fetchFollowers();
-        setInterval(fetchFollowers, 60000); // refresh every minute
+        async function startSync() {
+            await fetchFollowers();
+            const statRes = await fetch('/api/stats');
+            const data = await statRes.json();
+            const interval = (data.pollingInterval || 60) * 1000;
+            setInterval(fetchFollowers, interval);
+        }
+        startSync();
     </script>
 </body>
 </html>
@@ -825,6 +840,10 @@ app.get('/', (c) => {
                     <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Follower Count (<span id="followerCountVal">10</span>)</label>
                     <input type="range" id="twFollowerCount" min="1" max="100" value="10" style="width: 100%;" oninput="document.getElementById('followerCountVal').innerText = this.value">
                 </div>
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Polling Interval (<span id="pollingVal">30</span>s)</label>
+                    <input type="range" id="twPollingInterval" min="5" max="300" value="30" step="5" style="width: 100%;" oninput="document.getElementById('pollingVal').innerText = this.value">
+                </div>
             </div>
             <p style="font-size: 0.75rem; color: #71717a; margin-bottom: 1rem;">
                 Need a token? <a href="https://twitchtokengenerator.com/" target="_blank" style="color: #9146ff; text-decoration: none; font-weight: 600;">Click here</a> to generate one with <code>channel:read:subscriptions</code>, <code>moderator:read:followers</code>, and <code>channel:manage:broadcast</code> scopes.
@@ -1037,6 +1056,7 @@ app.get('/', (c) => {
             const goalSize = parseInt(document.getElementById('twGoalSize').value);
             const scrollSpeed = parseInt(document.getElementById('twScrollSpeed').value);
             const followerCount = parseInt(document.getElementById('twFollowerCount').value);
+            const pollingInterval = parseInt(document.getElementById('twPollingInterval').value);
             
             if (!token && !followerGoal && !subGoal && !followerColor) return;
             
@@ -1052,7 +1072,7 @@ app.get('/', (c) => {
                     method: 'POST',
                     body: JSON.stringify({ 
                         token, followerGoal, subGoal, followerColor, subColor, 
-                        followerTextColor, subTextColor, labelSize, valueSize, goalSize, scrollSpeed, followerCount
+                        followerTextColor, subTextColor, labelSize, valueSize, goalSize, scrollSpeed, followerCount, pollingInterval
                     }),
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -1349,6 +1369,10 @@ app.get('/', (c) => {
                         document.getElementById('twFollowerCount').value = settings.followerCount;
                         document.getElementById('followerCountVal').innerText = settings.followerCount;
                     }
+                    if (settings.pollingInterval) {
+                        document.getElementById('twPollingInterval').value = settings.pollingInterval;
+                        document.getElementById('pollingVal').innerText = settings.pollingInterval;
+                    }
                     if (settings.obsAddress) document.getElementById('obsAddress').value = settings.obsAddress;
                     if (settings.obsPassword) document.getElementById('obsPassword').value = settings.obsPassword;
                     if (settings.obsSourceName) document.getElementById('obsSourceName').value = settings.obsSourceName;
@@ -1410,6 +1434,7 @@ app.get('/', (c) => {
         document.getElementById('twGoalSize').onchange = autoSave;
         document.getElementById('twScrollSpeed').onchange = autoSave;
         document.getElementById('twFollowerCount').onchange = autoSave;
+        document.getElementById('twPollingInterval').onchange = autoSave;
         
         // OBS Auto-save
         const saveObsSettings = async () => {
