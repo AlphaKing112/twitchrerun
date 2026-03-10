@@ -542,9 +542,9 @@ app.get('/overlay/recent-followers', (c) => {
         .wrapper { width: 100%; white-space: nowrap; overflow: hidden; background: rgba(0,0,0,0.7); padding: 10px 0; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); display: flex; align-items: center; }
         .label { padding-left: 15px; font-size: 16px; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 800; padding-right: 15px; border-right: 1px solid rgba(255,255,255,0.2); z-index: 2; background: inherit; }
         .marquee-container { flex: 1; overflow: hidden; position: relative; }
-        .marquee { display: inline-block; animation: scroll 15s linear infinite; font-size: 18px; font-weight: 600; padding-left: 100%; }
-        .follower-item { margin-right: 30px; display: inline-flex; align-items: center; }
-        .follower-item::before { content: '♥'; color: #ef4444; margin-right: 6px; font-size: 14px; }
+        .marquee { display: inline-block; animation: scroll linear infinite; font-size: 18px; font-weight: 600; padding-left: 100%; transition: animation-duration 0.5s ease; }
+        .follower-item { margin-right: 40px; display: inline-flex; align-items: center; }
+        .follower-item::before { content: '♥'; color: #ef4444; margin-right: 8px; font-size: 16px; }
         
         @keyframes scroll {
             0% { transform: translateX(0); }
@@ -575,12 +575,14 @@ app.get('/overlay/recent-followers', (c) => {
                 }
             } catch(e) {}
         }
+        let syncInterval = null;
         async function startSync() {
             await fetchFollowers();
-            const statRes = await fetch('/api/stats');
-            const data = await statRes.json();
-            const interval = (data.pollingInterval || 60) * 1000;
-            setInterval(fetchFollowers, interval);
+            const res = await fetch('/api/twitch/stats/settings');
+            const data = await res.json();
+            const interval = (data?.pollingInterval || 60) * 1000;
+            if (syncInterval) clearInterval(syncInterval);
+            syncInterval = setInterval(fetchFollowers, interval);
         }
         startSync();
     </script>
@@ -609,7 +611,10 @@ app.get('/overlay/countdown', async (c) => {
         body { margin: 0; padding: 20px; color: white; font-family: 'Outfit', sans-serif; overflow: hidden; background: transparent; }
         .container {
             padding: 0;
-            display: inline-block;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
             transition: all 0.3s ease;
         }
         .label {
