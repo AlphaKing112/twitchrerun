@@ -1102,9 +1102,9 @@ app.get('/', (c) => {
             } catch (error) {
                 let msg = error.message;
                 if (window.location.protocol === 'https:' && address.startsWith('ws://')) {
-                    msg = "Mixed Content Block: Browsers block 'ws' connections on 'https' sites. Try using your Local IP (192.168.x.x) or use ngrok for a 'wss' link.";
+                    msg = "⚠️ Mixed Content Blocked. Fix: Click the 🔒 lock icon in your browser → Site Settings → Insecure content → Allow. Then reload and try again.";
                 }
-                obsStatus.innerText = 'Connection Failed: ' + msg;
+                obsStatus.innerHTML = 'Connection Failed: ' + msg;
                 console.error('OBS Connect Error:', error);
             }
         }
