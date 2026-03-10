@@ -906,13 +906,27 @@ app.get('/', (c) => {
             </div>
         </section>
 
+        <!-- TWITCH ACCESS CONFIG -->
         <section class="card">
-            <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Twitch Overlays</h2>
-            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                <div>
-                   <label style="font-size: 0.8rem; color: #a1a1aa;">User Access Token</label>
-                   <input type="password" id="twStatToken" placeholder="oauth:xxxx" style="width: 100%;">
-                </div>
+            <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Twitch Access</h2>
+            <div style="margin-bottom: 1.5rem;">
+                <label style="font-size: 0.8rem; color: #a1a1aa;">User Access Token</label>
+                <input type="password" id="twStatToken" placeholder="oauth:xxxx" style="width: 100%;">
+                <p style="font-size: 0.75rem; color: #71717a; margin-top: 0.5rem;">
+                    Need a token? <a href="https://twitchtokengenerator.com/" target="_blank" style="color: #9146ff; text-decoration: none; font-weight: 600;">Click here</a> to generate one with <code>channel:read:subscriptions</code>, <code>moderator:read:followers</code>, and <code>channel:manage:broadcast</code> scopes.
+                </p>
+                <p style="font-size: 0.75rem; color: #71717a; margin-top: 0.5rem;">
+                    Note: Total Subs requires <code>channel:read:subscriptions</code>. Followers requires <code>moderator:read:followers</code>. Category Auto-Update requires <code>channel:manage:broadcast</code>.
+                </p>
+            </div>
+            <button onclick="saveTwitchStats(event)" style="width: 100%; background: #059669;">Save Access Token</button>
+        </section>
+
+        <!-- GOAL OVERLAYS (Followers/Subs) -->
+        <section class="card">
+            <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">📊 Goal Overlays</h2>
+            
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                 <div>
                    <label style="font-size: 0.8rem; color: #a1a1aa;">Follower Goal (e.g. 100)</label>
                    <input type="text" id="twFollowerGoal" placeholder="Leave empty for no goal" style="width: 100%;">
@@ -922,7 +936,7 @@ app.get('/', (c) => {
                    <input type="text" id="twSubGoal" placeholder="Leave empty for no goal" style="width: 100%;">
                 </div>
             </div>
-            
+
             <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                 <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
                     <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Follower Bar Color</label>
@@ -971,7 +985,37 @@ app.get('/', (c) => {
                     <input type="range" id="twGoalSize" min="10" max="50" value="22" style="width: 100%;" oninput="document.getElementById('goalSizeVal').innerText = this.value">
                 </div>
             </div>
-            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+
+            <div style="margin-bottom: 1.5rem;">
+                <p style="font-size: 0.8rem; color: #a1a1aa; margin-bottom: 0.5rem; text-align: center;">Previews</p>
+                <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                    <iframe id="followPreview" src="" style="border: 1px solid var(--border); width: 280px; height: 80px; border-radius: 8px; background: #000;"></iframe>
+                    <iframe id="subPreview" src="" style="border: 1px solid var(--border); width: 280px; height: 80px; border-radius: 8px; background: #000;"></iframe>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Followers URL</label>
+                    <div class="playlist-url">
+                        <code id="followOverlayUrl"></code>
+                        <button class="secondary" onclick="copyText('followOverlayUrl')">Copy</button>
+                    </div>
+                </div>
+                <div>
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Subscribers URL</label>
+                    <div class="playlist-url">
+                        <code id="subOverlayUrl"></code>
+                        <button class="secondary" onclick="copyText('subOverlayUrl')">Copy</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- RECENT FOLLOWERS -->
+        <section class="card">
+            <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">♥ Recent Followers</h2>
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
                 <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
                     <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Scroll Speed (<span id="scrollSpeedVal">15</span>s)</label>
                     <input type="range" id="twScrollSpeed" min="5" max="120" value="15" style="width: 100%;" oninput="document.getElementById('scrollSpeedVal').innerText = this.value">
@@ -986,108 +1030,84 @@ app.get('/', (c) => {
                 </div>
             </div>
 
-            <div class="card" style="margin-bottom: 1.5rem; background: #1a1a1e; border: 1px solid var(--border); border-radius: 1rem; overflow: hidden;">
-                <div style="background: #252529; padding: 1rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-                    <h3 style="margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem;">⏳ Going Live Countdown</h3>
-                </div>
-                <div style="padding: 1.5rem;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                        <div>
-                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label (e.g. NEXT LIVE STREAM)</label>
-                            <input type="text" id="twLiveLabel" placeholder="NEXT LIVE STREAM" style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #121214; color: white;">
-                        </div>
-                        <div>
-                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Pick Time</label>
-                            <input type="time" id="twLiveTime" style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #121214; color: white;">
-                        </div>
-                        <div>
-                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Timezone</label>
-                            <select id="twLiveTZ" style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #121214; color: white;">
-                                <option value="local">Detect (Browser)</option>
-                                <option value="UTC">UTC</option>
-                                <option value="America/New_York">Eastern Time (ET)</option>
-                                <option value="America/Chicago">Central Time (CT)</option>
-                                <option value="America/Denver">Mountain Time (MT)</option>
-                                <option value="America/Los_Angeles">Pacific Time (PT)</option>
-                                <option value="Europe/London">London (GMT/BST)</option>
-                                <option value="Europe/Paris">Central Europe (CET)</option>
-                                <option value="Asia/Tokyo">Tokyo (JST)</option>
-                                <option value="Australia/Sydney">Sydney (AEST)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                        <div>
-                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label Color</label>
-                            <div style="display: flex; gap: 0.5rem;">
-                                <input type="color" id="twTimerLabelColor" value="#9146ff" style="width: 40px; height: 40px; border: none; background: none; cursor: pointer;">
-                                <input type="text" id="twTimerLabelHex" value="#9146ff" style="flex: 1; padding: 0.5rem; border-radius: 0.4rem; border: 1px solid var(--border); background: #121214; color: white; font-family: monospace;">
-                            </div>
-                        </div>
-                        <div>
-                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Number Color</label>
-                            <div style="display: flex; gap: 0.5rem;">
-                                <input type="color" id="twTimerColor" value="#ffffff" style="width: 40px; height: 40px; border: none; background: none; cursor: pointer;">
-                                <input type="text" id="twTimerHex" value="#ffffff" style="flex: 1; padding: 0.5rem; border-radius: 0.4rem; border: 1px solid var(--border); background: #121214; color: white; font-family: monospace;">
-                            </div>
-                        </div>
-                        <div>
-                            <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Overall Size (<span id="timerSizeVal">52</span>px)</label>
-                            <input type="range" id="twTimerSize" min="20" max="150" value="52" style="width: 100%;" oninput="document.getElementById('timerSizeVal').innerText = this.value">
-                        </div>
-                    </div>
-                    <div class="input-group" style="padding: 0.75rem; background: #121214; border-radius: 0.5rem; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-                        <span id="countdownOverlayUrl" style="font-family: monospace; font-size: 0.8rem; color: #a1a1aa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 1rem;"></span>
-                        <button onclick="copyText('countdownOverlayUrl')" style="background: #9146ff; color: white; border: none; padding: 0.4rem 0.8rem; border-radius: 0.3rem; font-size: 0.75rem; cursor: pointer;">Copy</button>
-                    </div>
-                </div>
-            </div>
-            <p style="font-size: 0.75rem; color: #71717a; margin-bottom: 1rem;">
-                Need a token? <a href="https://twitchtokengenerator.com/" target="_blank" style="color: #9146ff; text-decoration: none; font-weight: 600;">Click here</a> to generate one with <code>channel:read:subscriptions</code>, <code>moderator:read:followers</code>, and <code>channel:manage:broadcast</code> scopes.
-            </p>
-            <p style="font-size: 0.75rem; color: #71717a; margin-bottom: 1rem;">
-                Note: Total Subs requires <code>channel:read:subscriptions</code>. Followers requires <code>moderator:read:followers</code>. Category Auto-Update requires <code>channel:manage:broadcast</code>.
-            </p>
-            <button onclick="saveTwitchStats(event)" style="width: 100%; background: #059669; margin-bottom: 2rem;">Save Overlay Settings</button>
-            
-            <div style="margin-bottom: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
-                <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 1rem; text-align: center;">Live Previews (What OBS will see)</p>
-                <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-                    <iframe id="followPreview" src="" style="border: 1px solid var(--border); width: 280px; height: 80px; border-radius: 8px; background: #000;"></iframe>
-                    <iframe id="subPreview" src="" style="border: 1px solid var(--border); width: 280px; height: 80px; border-radius: 8px; background: #000;"></iframe>
-                    <iframe id="countdownPreview" src="" style="border: 1px solid var(--border); width: 280px; height: 80px; border-radius: 8px; background: #000;"></iframe>
-                    <iframe id="recentPreview" src="" style="border: 1px solid var(--border); width: 576px; height: 50px; border-radius: 8px; background: #000;"></iframe>
+            <div style="margin-bottom: 1.5rem;">
+                <p style="font-size: 0.8rem; color: #a1a1aa; margin-bottom: 0.5rem; text-align: center;">Recent Followers Preview</p>
+                <div style="display: flex; justify-content: center;">
+                    <iframe id="recentPreview" src="" style="border: 1px solid var(--border); width: 100%; height: 60px; border-radius: 8px; background: #000;"></iframe>
                 </div>
             </div>
 
-            <div id="overlayLinks" style="display: flex; flex-direction: column; gap: 1rem;">
+            <div>
+                <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Recent Followers URL</label>
+                <div class="playlist-url">
+                    <code id="recentOverlayUrl"></code>
+                    <button class="secondary" onclick="copyText('recentOverlayUrl')">Copy</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- GOING LIVE COUNTDOWN -->
+        <section class="card">
+            <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">⏳ Going Live Countdown</h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                 <div>
-                    <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 0.5rem;">Followers Overlay URL:</p>
-                    <div class="playlist-url">
-                        <code id="followOverlayUrl"></code>
-                        <button class="secondary" onclick="copyText('followOverlayUrl')">Copy</button>
-                    </div>
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label</label>
+                    <input type="text" id="twLiveLabel" placeholder="NEXT LIVE STREAM" style="width: 100%;">
                 </div>
                 <div>
-                    <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 0.5rem;">Subscribers Overlay URL:</p>
-                    <div class="playlist-url">
-                        <code id="subOverlayUrl"></code>
-                        <button class="secondary" onclick="copyText('subOverlayUrl')">Copy</button>
-                    </div>
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Time</label>
+                    <input type="time" id="twLiveTime" style="width: 100%;">
                 </div>
                 <div>
-                    <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 0.5rem;">Recent Followers Overlay URL:</p>
-                    <div class="playlist-url">
-                        <code id="recentOverlayUrl"></code>
-                        <button class="secondary" onclick="copyText('recentOverlayUrl')">Copy</button>
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Timezone</label>
+                    <select id="twLiveTZ" style="width: 100%;">
+                        <option value="local">Detect (Browser)</option>
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">Eastern Time (ET)</option>
+                        <option value="America/Chicago">Central Time (CT)</option>
+                        <option value="America/Denver">Mountain Time (MT)</option>
+                        <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                        <option value="Europe/London">London (GMT/BST)</option>
+                        <option value="Europe/Paris">Central Europe (CET)</option>
+                        <option value="Asia/Tokyo">Tokyo (JST)</option>
+                        <option value="Australia/Sydney">Sydney (AEST)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label Color</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="color" id="twTimerLabelColor" value="#9146ff" style="width: 40px; height: 35px; border: none; background: none; cursor: pointer;">
+                        <input type="text" id="twTimerLabelHex" value="#9146ff" style="flex: 1; padding: 0.3rem; font-size: 0.8rem; border-radius: 0.4rem; border: 1px solid var(--border); background: #18181b; color: white;">
                     </div>
                 </div>
-                <div>
-                    <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 0.5rem;">Countdown Timer Overlay URL:</p>
-                    <div class="playlist-url">
-                        <code id="countdownLink"></code>
-                        <button class="secondary" onclick="copyText('countdownLink')">Copy</button>
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Number Color</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="color" id="twTimerColor" value="#ffffff" style="width: 40px; height: 35px; border: none; background: none; cursor: pointer;">
+                        <input type="text" id="twTimerHex" value="#ffffff" style="flex: 1; padding: 0.3rem; font-size: 0.8rem; border-radius: 0.4rem; border: 1px solid var(--border); background: #18181b; color: white;">
                     </div>
+                </div>
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Size (<span id="timerSizeVal">52</span>px)</label>
+                    <input type="range" id="twTimerSize" min="20" max="150" value="52" style="width: 100%;" oninput="document.getElementById('timerSizeVal').innerText = this.value">
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+                <p style="font-size: 0.8rem; color: #a1a1aa; margin-bottom: 0.5rem; text-align: center;">Countdown Preview</p>
+                <div style="display: flex; justify-content: center;">
+                    <iframe id="countdownPreview" src="" style="border: 1px solid var(--border); width: 100%; height: 120px; border-radius: 8px; background: #000;"></iframe>
+                </div>
+            </div>
+
+            <div>
+                <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Countdown URL</label>
+                <div class="playlist-url">
+                    <code id="countdownLink"></code>
+                    <button class="secondary" onclick="copyText('countdownLink')">Copy</button>
                 </div>
             </div>
         </section>
