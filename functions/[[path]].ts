@@ -246,6 +246,7 @@ app.post('/api/twitch/stats/settings', async (c) => {
     labelSize: labelSize || existing?.labelSize || 16,
     valueSize: valueSize || existing?.valueSize || 38,
     goalSize: goalSize || existing?.goalSize || 22,
+    scrollSpeed: body.scrollSpeed || existing?.scrollSpeed || 15,
     followerCount: body.followerCount || existing?.followerCount || 10,
     pollingInterval: body.pollingInterval || existing?.pollingInterval || 30,
     liveTimer: body.liveTimer || existing?.liveTimer || '',
@@ -625,6 +626,7 @@ app.get('/overlay/countdown', async (c) => {
             letter-spacing: 3px;
             margin-bottom: 4px;
             opacity: 0.9;
+            text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
         }
         .timer {
             font-size: ${timerSize}px;
@@ -633,6 +635,7 @@ app.get('/overlay/countdown', async (c) => {
             gap: 12px;
             line-height: 1;
             color: ${timerColor};
+            text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
         }
         .unit { display: flex; flex-direction: column; align-items: center; }
         .separator { color: ${labelColor}; transform: translateY(-4px); font-weight: 400; }
