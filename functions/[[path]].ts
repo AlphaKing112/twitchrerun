@@ -755,8 +755,9 @@ app.get('/', (c) => {
         .subtitle { color: #a1a1aa; font-size: 1rem; }
         .card { background: var(--glass); backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 1.5rem; padding: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-bottom: 1.5rem; }
         .input-group { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
-        input { flex: 1; min-width: 0; background: #121214; border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.75rem 1rem; color: white; font-size: 1rem; transition: 0.2s; }
-        input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(145, 70, 255, 0.2); }
+        input, select { flex: 1; min-width: 0; background: #121214; border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.75rem 1rem; color: white; font-size: 1rem; transition: 0.2s; font-family: inherit; }
+        input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(145, 70, 255, 0.2); }
+        select { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1em; padding-right: 2.5rem; }
         button { cursor: pointer; border: none; border-radius: 0.75rem; padding: 0.75rem 1.5rem; font-size: 1rem; font-weight: 600; transition: 0.2s; background: var(--primary); color: white; }
         button:hover { background: var(--primary-hover); transform: translateY(-1px); }
         button.secondary { background: #27272a; padding: 0.5rem 1rem; font-size: 0.8rem; }
@@ -817,8 +818,8 @@ app.get('/', (c) => {
             <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">OBS Connection</h2>
 
             <div style="margin-bottom: 1rem;">
-                <label style="font-size: 0.8rem; color: #a1a1aa;">Connection Mode</label>
-                <select id="obsMode" onchange="toggleObsMode()" style="width: 100%; margin-top: 0.25rem; background: #121214; color: #f0f0f5; border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.6rem; font-family: inherit; font-size: 0.9rem;">
+                <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Connection Mode</label>
+                <select id="obsMode" onchange="toggleObsMode()" style="width: 100%;">
                     <option value="local">🏠 Local (Home Network)</option>
                     <option value="remote">🌐 Remote (Cloudflare Tunnel / DDNS)</option>
                 </select>
@@ -1053,7 +1054,7 @@ app.get('/', (c) => {
         <!-- GOING LIVE COUNTDOWN -->
         <section class="card">
             <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">⏳ Going Live Countdown</h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                 <div>
                     <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label</label>
                     <input type="text" id="twLiveLabel" placeholder="NEXT LIVE STREAM" style="width: 100%;">
@@ -1079,7 +1080,7 @@ app.get('/', (c) => {
                 </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
                 <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
                     <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label Color</label>
                     <div style="display: flex; gap: 0.5rem;">
