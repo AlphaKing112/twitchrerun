@@ -440,7 +440,7 @@ const overlayHtml = (title: string, field: string, goalField: string, colorField
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@800&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; padding: 10px; font-family: 'Outfit', sans-serif; color: white; overflow: hidden; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .wrapper { width: fit-content; min-width: 300px; white-space: nowrap; }
+        .wrapper { width: fit-content; white-space: nowrap; }
         .stat-box { 
             position: relative;
             background: rgba(0,0,0,0.7); 
