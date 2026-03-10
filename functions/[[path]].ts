@@ -612,6 +612,13 @@ app.get('/overlay/countdown', async (c) => {
 <head>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --label-size: ${labelSizeSetting}px;
+            --label-color: ${labelColor};
+            --timer-size: ${timerSize}px;
+            --timer-color: ${timerColor};
+            --expired-size: ${Math.round(timerSize * 0.7)}px;
+        }
         body { margin: 0; padding: 0; color: white; font-family: 'Outfit', sans-serif; overflow: hidden; background: transparent; display: flex; justify-content: center; align-items: center; min-height: 100vh; text-align: center; }
         .container {
             padding: 20px;
@@ -622,9 +629,9 @@ app.get('/overlay/countdown', async (c) => {
             transition: all 0.3s ease;
         }
         .label {
-            font-size: ${labelSizeSetting}px;
+            font-size: var(--label-size);
             font-weight: 800;
-            color: ${labelColor};
+            color: var(--label-color);
             text-transform: uppercase;
             letter-spacing: 3px;
             margin-bottom: 4px;
@@ -632,17 +639,18 @@ app.get('/overlay/countdown', async (c) => {
             text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
         }
         .timer {
-            font-size: ${timerSize}px;
+            font-size: var(--timer-size);
             font-weight: 900;
             display: flex;
             gap: 12px;
             line-height: 1;
-            color: ${timerColor};
+            color: var(--timer-color);
             text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
         }
         .unit { display: flex; flex-direction: column; align-items: center; }
-        .separator { color: ${labelColor}; transform: translateY(-4px); font-weight: 400; }
-        .expired { color: #ef4444; font-size: ${Math.round(timerSize * 0.7)}px; font-weight: 900; letter-spacing: -1px; }
+        .separator { color: var(--label-color); transform: translateY(-4px); font-weight: 400; }
+        .expired { color: #ef4444; font-size: var(--expired-size); font-weight: 900; letter-spacing: -1px; }
+
     </style>
 </head>
 <body>
@@ -657,8 +665,8 @@ app.get('/overlay/countdown', async (c) => {
         </div>
     </div>
     <script>
-        const timeStr = "${targetTime}";
-        const selectedTz = "${tz}";
+        let timeStr = "${targetTime}";
+        let selectedTz = "${tz}";
 
         function getTargetTime() {
             if (!timeStr) return null;
@@ -686,7 +694,7 @@ app.get('/overlay/countdown', async (c) => {
             return target.getTime() + tzOffset;
         }
 
-        const target = getTargetTime();
+        let target = getTargetTime();
 
         function update() {
             if (!target) return;
@@ -698,16 +706,66 @@ app.get('/overlay/countdown', async (c) => {
             if (diff <= 0) {
                 document.getElementById('countdown').innerHTML = '<div class="expired">STREAM STARTING SOON!</div>';
                 return;
+            } else {
+                if (document.getElementById('countdown').children.length <= 1) {
+                    // Restore HTML structure if we changed from expired to future time
+                    document.getElementById('countdown').innerHTML = \`
+                        <div class="unit"><div id="h">00</div></div>
+                        <div class="separator">:</div>
+                        <div class="unit"><div id="m">00</div></div>
+                        <div class="separator">:</div>
+                        <div class="unit"><div id="s">00</div></div>
+                    \`;
+                }
             }
 
             const h = Math.floor(diff / (1000 * 60 * 60));
             const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
             const s = Math.floor((diff % (1000 * 60)) / 1000);
 
-            document.getElementById('h').innerText = String(h).padStart(2, '0');
-            document.getElementById('m').innerText = String(m).padStart(2, '0');
-            document.getElementById('s').innerText = String(s).padStart(2, '0');
+            let hEl = document.getElementById('h');
+            let mEl = document.getElementById('m');
+            let sEl = document.getElementById('s');
+            
+            if(hEl) hEl.innerText = String(h).padStart(2, '0');
+            if(mEl) mEl.innerText = String(m).padStart(2, '0');
+            if(sEl) sEl.innerText = String(s).padStart(2, '0');
         }
+        
+        async function syncSettings() {
+            try {
+                const res = await fetch('/api/twitch/stats/settings');
+                const data = await res.json();
+                if (data && data.liveTimer !== undefined) {
+                    const newTimeStr = data.liveTimer || '';
+                    const newTz = data.liveTimerTZ || 'local';
+                    let targetChanged = false;
+
+                    if (newTimeStr !== timeStr || newTz !== selectedTz) {
+                        timeStr = newTimeStr;
+                        selectedTz = newTz;
+                        target = getTargetTime();
+                        targetChanged = true;
+                    }
+
+                    document.getElementById('timerLabel').innerText = data.liveTimerLabel || 'NEXT LIVE STREAM';
+                    
+                    const root = document.documentElement;
+                    root.style.setProperty('--label-color', data.timerLabelColor || '#9146ff');
+                    root.style.setProperty('--timer-color', data.timerColor || '#ffffff');
+                    
+                    const tSize = data.timerSize || 52;
+                    const lSize = data.timerLabelSize || Math.round(tSize * 0.35);
+                    root.style.setProperty('--timer-size', tSize + 'px');
+                    root.style.setProperty('--label-size', lSize + 'px');
+                    root.style.setProperty('--expired-size', Math.round(tSize * 0.7) + 'px');
+
+                    if (targetChanged) update();
+                }
+            } catch(e) {}
+        }
+
+        setInterval(syncSettings, 3000); // Check for settings changes every 3s
         setInterval(update, 1000);
         update();
     </script>
