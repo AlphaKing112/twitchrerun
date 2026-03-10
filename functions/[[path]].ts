@@ -1210,16 +1210,17 @@ app.get('/', (c) => {
                 
                 // Also update the playlist URL to include/exclude shuffle param
                 if (inputSettings.playlist && inputSettings.playlist[0]) {
-                    let url = inputSettings.playlist[0].value;
-                    // Remove existing shuffle param
-                    url = url.replace(/[?&]shuffle=[^&]+/, '');
-                    // Add it back if needed
-                    url += (url.includes('?') ? '&' : '?') + 'shuffle=' + obsShuffle;
-                    // Add timestamp to force OBS refresh
-                    url = url.replace(/[?&]t=[^&]+/, '');
-                    url += '&t=' + Date.now();
-                    
-                    inputSettings.playlist[0].value = url;
+                    try {
+                        const u = new URL(inputSettings.playlist[0].value);
+                        u.searchParams.set('shuffle', obsShuffle);
+                        u.searchParams.set('t', Date.now());
+                        inputSettings.playlist[0].value = u.toString();
+                    } catch (e) {
+                        // Fallback for non-absolute URLs if any
+                        let url = inputSettings.playlist[0].value.split('?')[0];
+                        url += '?shuffle=' + obsShuffle + '&t=' + Date.now();
+                        inputSettings.playlist[0].value = url;
+                    }
                 }
 
                 await obs.call('SetInputSettings', {
