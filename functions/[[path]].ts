@@ -1192,25 +1192,27 @@ app.get('/', (c) => {
             const sourceName = document.getElementById('obsSourceName').value;
             
             try {
-                // First check if it's actually a VLC source
-                const { inputKind } = await obs.call('GetInputSettings', { inputName: sourceName });
+                const { inputSettings, inputKind } = await obs.call('GetInputSettings', { inputName: sourceName });
+                console.log('[OBS Debug] Current Source Kind:', inputKind);
+                console.log('[OBS Debug] Current Settings:', inputSettings);
+
                 if (inputKind !== 'vlc_source') {
-                    alert('Shuffle failed: Source "' + sourceName + '" is a ' + inputKind + '. Shuffle ONLY works with "VLC Video Source". Check your OBS source type!');
+                    alert('Shuffle Error: Source "' + sourceName + '" is a "' + inputKind + '". Shuffle only works with "VLC Video Source" plugins. Please check your OBS source type.');
                     return;
                 }
 
                 obsShuffle = !obsShuffle;
                 await obs.call('SetInputSettings', {
                     inputName: sourceName,
-                    inputSettings: { shuffle: obsShuffle }
+                    inputSettings: { ...inputSettings, shuffle: obsShuffle }
                 });
                 
-                console.log('OBS Shuffle set to: ' + obsShuffle + ' for ' + sourceName);
+                console.log('[OBS Debug] Successfully set Shuffle to:', obsShuffle);
                 document.getElementById('obsShuffleBtn').innerText = 'Shuffle: ' + (obsShuffle ? 'ON' : 'OFF');
                 document.getElementById('obsShuffleBtn').style.color = obsShuffle ? '#d49aff' : 'inherit';
             } catch (e) {
-                console.error('Shuffle Error:', e);
-                alert('Could not toggle shuffle: ' + e.message);
+                console.error('[OBS Debug] Shuffle Failed:', e);
+                alert('Shuffle Failed: ' + e.message);
             }
         }
 
@@ -1218,13 +1220,17 @@ app.get('/', (c) => {
             if (!obsConnected) return;
             const sourceName = document.getElementById('obsSourceName').value;
             try {
-                const { inputSettings } = await obs.call('GetInputSettings', { inputName: sourceName });
+                const { inputSettings, inputKind } = await obs.call('GetInputSettings', { inputName: sourceName });
+                console.log('[OBS Debug] Syncing State. Kind:', inputKind, 'Settings:', inputSettings);
+                
                 if (typeof inputSettings.shuffle !== 'undefined') {
                     obsShuffle = inputSettings.shuffle;
                     document.getElementById('obsShuffleBtn').innerText = 'Shuffle: ' + (obsShuffle ? 'ON' : 'OFF');
                     document.getElementById('obsShuffleBtn').style.color = obsShuffle ? '#d49aff' : 'inherit';
                 }
-            } catch(e) {}
+            } catch(e) {
+                console.warn('[OBS Debug] Sync state failed', e);
+            }
         }
 
         const seekBar = document.getElementById('obsSeekBar');
