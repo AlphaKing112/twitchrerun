@@ -1015,7 +1015,6 @@ app.get('/', (c) => {
                             </select>
                         </div>
                     </div>
-                    </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                         <div>
                             <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label Color</label>
