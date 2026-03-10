@@ -1190,20 +1190,27 @@ app.get('/', (c) => {
         async function toggleObsShuffle() {
             if (!obsConnected) return;
             const sourceName = document.getElementById('obsSourceName').value;
-            obsShuffle = !obsShuffle;
             
             try {
-                // VLC source specific settings
+                // First check if it's actually a VLC source
+                const { inputKind } = await obs.call('GetInputSettings', { inputName: sourceName });
+                if (inputKind !== 'vlc_source') {
+                    alert('Shuffle failed: Source "' + sourceName + '" is a ' + inputKind + '. Shuffle ONLY works with "VLC Video Source". Check your OBS source type!');
+                    return;
+                }
+
+                obsShuffle = !obsShuffle;
                 await obs.call('SetInputSettings', {
                     inputName: sourceName,
-                    inputSettings: {
-                        shuffle: obsShuffle
-                    }
+                    inputSettings: { shuffle: obsShuffle }
                 });
+                
+                console.log('OBS Shuffle set to: ' + obsShuffle + ' for ' + sourceName);
                 document.getElementById('obsShuffleBtn').innerText = 'Shuffle: ' + (obsShuffle ? 'ON' : 'OFF');
                 document.getElementById('obsShuffleBtn').style.color = obsShuffle ? '#d49aff' : 'inherit';
             } catch (e) {
-                alert('Could not toggle shuffle. Ensure source is a VLC Video Source.');
+                console.error('Shuffle Error:', e);
+                alert('Could not toggle shuffle: ' + e.message);
             }
         }
 
