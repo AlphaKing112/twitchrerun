@@ -1322,7 +1322,6 @@ app.get('/', (c) => {
                     document.getElementById('recentPreview').src = '/overlay/recent-followers?t=' + Date.now();
                     document.getElementById('countdownPreview').src = '/overlay/countdown?t=' + Date.now();
                     document.getElementById('countdownLink').innerText = window.location.origin + '/overlay/countdown?t=' + Date.now();
-                    document.getElementById('countdownOverlayUrl').innerText = window.location.origin + '/overlay/countdown?t=' + Date.now();
                 } else {
                     if (btn) alert('Error: ' + data.error);
                 }
@@ -1576,7 +1575,6 @@ app.get('/', (c) => {
                 document.getElementById('subOverlayUrl').innerText = window.location.origin + '/overlay/subs';
                 document.getElementById('recentOverlayUrl').innerText = window.location.origin + '/overlay/recent-followers';
                 document.getElementById('countdownLink').innerText = window.location.origin + '/overlay/countdown';
-                document.getElementById('countdownOverlayUrl').innerText = window.location.origin + '/overlay/countdown';
 
                 // Previews
                 document.getElementById('followPreview').src = '/overlay/followers';
