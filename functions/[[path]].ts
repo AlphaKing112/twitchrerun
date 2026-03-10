@@ -165,7 +165,12 @@ app.get('/api/playlist.json', async (c) => {
 
 // API: M3U Playlist
 app.get('/api/playlist', async (c) => {
-  const resolved = await getResolvedVods(c.env);
+  let resolved = await getResolvedVods(c.env);
+  const shouldShuffle = c.req.query('shuffle') === 'true';
+
+  if (shouldShuffle && resolved.length > 0) {
+    resolved = [...resolved].sort(() => Math.random() - 0.5);
+  }
 
   if (resolved.length === 0) {
     return c.text('#EXTM3U\n# No VODs in list\n', { headers: { 'Content-Type': 'audio/x-mpegurl' } });
@@ -1202,12 +1207,27 @@ app.get('/', (c) => {
                 }
 
                 obsShuffle = !obsShuffle;
+                
+                // Also update the playlist URL to include/exclude shuffle param
+                if (inputSettings.playlist && inputSettings.playlist[0]) {
+                    let url = inputSettings.playlist[0].value;
+                    // Remove existing shuffle param
+                    url = url.replace(/[?&]shuffle=[^&]+/, '');
+                    // Add it back if needed
+                    url += (url.includes('?') ? '&' : '?') + 'shuffle=' + obsShuffle;
+                    // Add timestamp to force OBS refresh
+                    url = url.replace(/[?&]t=[^&]+/, '');
+                    url += '&t=' + Date.now();
+                    
+                    inputSettings.playlist[0].value = url;
+                }
+
                 await obs.call('SetInputSettings', {
                     inputName: sourceName,
                     inputSettings: { ...inputSettings, shuffle: obsShuffle }
                 });
                 
-                console.log('[OBS Debug] Successfully set Shuffle to:', obsShuffle);
+                console.log('[OBS Debug] Successfully set Shuffle to:', obsShuffle, 'New URL:', inputSettings.playlist?.[0]?.value);
                 document.getElementById('obsShuffleBtn').innerText = 'Shuffle: ' + (obsShuffle ? 'ON' : 'OFF');
                 document.getElementById('obsShuffleBtn').style.color = obsShuffle ? '#d49aff' : 'inherit';
             } catch (e) {
