@@ -765,7 +765,7 @@ app.get('/overlay/countdown', async (c) => {
             } catch(e) {}
         }
 
-        setInterval(syncSettings, 3000); // Check for settings changes every 3s
+        setInterval(syncSettings, 30000); // Check for settings changes every 30s
         setInterval(update, 1000);
         update();
     </script>
