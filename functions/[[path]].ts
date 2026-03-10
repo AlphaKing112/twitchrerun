@@ -608,14 +608,8 @@ app.get('/overlay/countdown', async (c) => {
     <style>
         body { margin: 0; padding: 20px; color: white; font-family: 'Outfit', sans-serif; overflow: hidden; background: transparent; }
         .container {
-            background: rgba(12, 12, 14, 0.9);
-            backdrop-filter: blur(15px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-left: 5px solid ${labelColor};
-            border-radius: 12px;
-            padding: 20px 35px;
+            padding: 0;
             display: inline-block;
-            box-shadow: 0 15px 45px rgba(0,0,0,0.6);
             transition: all 0.3s ease;
         }
         .label {
@@ -624,7 +618,7 @@ app.get('/overlay/countdown', async (c) => {
             color: ${labelColor};
             text-transform: uppercase;
             letter-spacing: 3px;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
             opacity: 0.9;
         }
         .timer {
@@ -636,7 +630,6 @@ app.get('/overlay/countdown', async (c) => {
             color: ${timerColor};
         }
         .unit { display: flex; flex-direction: column; align-items: center; }
-        .unit span { font-size: ${Math.round(timerSize * 0.2)}px; text-transform: uppercase; color: #a1a1aa; margin-top: 6px; font-weight: 600; letter-spacing: 1px; }
         .separator { color: ${labelColor}; transform: translateY(-4px); font-weight: 400; }
         .expired { color: #ef4444; font-size: ${Math.round(timerSize * 0.7)}px; font-weight: 900; letter-spacing: -1px; }
     </style>
@@ -645,11 +638,11 @@ app.get('/overlay/countdown', async (c) => {
     <div class="container" id="cont" style="display: none;">
         <div class="label" id="timerLabel">${label}</div>
         <div id="countdown" class="timer">
-            <div class="unit"><div id="h">00</div><span>hrs</span></div>
+            <div class="unit"><div id="h">00</div></div>
             <div class="separator">:</div>
-            <div class="unit"><div id="m">00</div><span>min</span></div>
+            <div class="unit"><div id="m">00</div></div>
             <div class="separator">:</div>
-            <div class="unit"><div id="s">00</div><span>sec</span></div>
+            <div class="unit"><div id="s">00</div></div>
         </div>
     </div>
     <script>
