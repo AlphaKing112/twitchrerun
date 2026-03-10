@@ -8,14 +8,19 @@
     "start": "next start"
   },
   "dependencies": {
-    "next": "16.1.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "hono": "^4.12.6",
+    "lucide-react": "^0.577.0",
+    "next": "15.1.6",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16",
+    "@cloudflare/workers-types": "^4.20260310.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.71.0"
   }
 }

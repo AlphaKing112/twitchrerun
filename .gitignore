@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# sensitive / local only
+_twitch_token.json
+projects.txt
+test.js
+
+# wrangler
+.wrangler/

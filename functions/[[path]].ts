@@ -1,0 +1,1403 @@
+import { Hono } from 'hono';
+import { handle } from 'hono/cloudflare-pages';
+
+const app = new Hono<{ Bindings: { RERUN_STORE: KVNamespace; TWITCH_CLIENT_ID: string; TWITCH_CLIENT_SECRET: string; } }>();
+
+// API: Get VODs
+app.get('/api/vods', async (c) => {
+  const vodData = await c.env.RERUN_STORE.get('vod_list');
+  const vods = vodData ? JSON.parse(vodData) : [];
+  return c.json(vods);
+});
+
+// API: Add VOD
+app.post('/api/vods', async (c) => {
+  const { vodId, title } = await c.req.json();
+  if (!vodId) return c.json({ error: 'VOD ID is required' }, 400);
+
+  const vodData = await c.env.RERUN_STORE.get('vod_list');
+  const vods = vodData ? JSON.parse(vodData) : [];
+
+  if (!vods.some((v: any) => v.id === vodId)) {
+    let finalTitle = title || `VOD ${vodId}`;
+    let author = 'Unknown';
+    let thumbnailUrl = '';
+    let duration = '';
+
+    try {
+      // Check both storage locations for a token
+      const statsData = await c.env.RERUN_STORE.get('_twitch_stats_settings');
+      const stats = statsData ? JSON.parse(statsData) : null;
+      const rawAuth = await c.env.RERUN_STORE.get('_twitch_token');
+      const auth = rawAuth ? JSON.parse(rawAuth) : null;
+
+      const token = stats?.token || auth?.token;
+      const clientId = stats?.clientId || auth?.clientId || 'ue6666qo983tsx6so1t0vnawi233wa';
+
+      const headers: Record<string, string> = { 'Client-ID': clientId };
+      if (token) headers['Authorization'] = `Bearer ${token.replace('oauth:', '')}`;
+
+      const videoRes = await fetch(`https://api.twitch.tv/helix/videos?id=${vodId}`, { headers });
+      const videoData = (await videoRes.json()) as any;
+      const v = videoData.data?.[0];
+      if (v) {
+        finalTitle = v.title;
+        author = v.user_name;
+        thumbnailUrl = (v.thumbnail_url || '').replace('%{width}', '320').replace('%{height}', '180');
+        duration = v.duration || '';
+      }
+    } catch (e) {
+      console.error('Enrichment error:', e);
+    }
+
+    vods.push({ 
+      id: vodId, 
+      title: finalTitle, 
+      author, 
+      thumbnailUrl,
+      duration,
+      enabled: true,
+      addedAt: new Date().toISOString()
+    });
+    
+    await c.env.RERUN_STORE.put('vod_list', JSON.stringify(vods));
+  }
+
+  return c.json(vods);
+});
+
+// API: Clear All
+app.post('/api/vods/clear', async (c) => {
+  await c.env.RERUN_STORE.put('vod_list', JSON.stringify([]));
+  return c.json([]);
+});
+
+// API: Delete VOD
+app.delete('/api/vods', async (c) => {
+  const id = c.req.query('id');
+  if (!id) return c.json({ error: 'ID is required' }, 400);
+
+  const vodData = await c.env.RERUN_STORE.get('vod_list');
+  let vods = vodData ? JSON.parse(vodData) : [];
+  vods = vods.filter((v: any) => v.id !== id);
+  
+  await c.env.RERUN_STORE.put('vod_list', JSON.stringify(vods));
+  return c.json(vods);
+});
+
+// API: Toggle VOD Status
+app.post('/api/vods/toggle', async (c) => {
+  const { id, enabled } = await c.req.json();
+  const vodData = await c.env.RERUN_STORE.get('vod_list');
+  let vods = vodData ? JSON.parse(vodData) : [];
+  vods = vods.map((v: any) => v.id === id ? { ...v, enabled } : v);
+  await c.env.RERUN_STORE.put('vod_list', JSON.stringify(vods));
+  return c.json(vods);
+});
+
+async function getResolvedVods(env: any) {
+  const vodData = await env.RERUN_STORE.get('vod_list');
+  const vods = vodData ? JSON.parse(vodData) : [];
+
+  if (vods.length === 0) return [];
+
+  const settingsData = await env.RERUN_STORE.get('_twitch_stats_settings');
+  const settings = settingsData ? JSON.parse(settingsData) : null;
+  
+  const GQL_URL = 'https://gql.twitch.tv/gql';
+  const PUBLIC_CLIENT_ID = 'ue6666qo983tsx6so1t0vnawi233wa';
+
+  return Promise.all(
+    vods.map(async (vod: any) => {
+      try {
+        const query = `query { videoPlaybackAccessToken(id: "${vod.id}", params: { platform: "web", playerBackend: "mediaplayer", playerType: "site" }) { value signature } }`;
+        
+        // Strategy 1: Try with user token if available
+        if (settings?.token && settings?.clientId) {
+          try {
+            const cleanToken = settings.token.replace('oauth:', '');
+            const resp = await fetch(GQL_URL, {
+              method: 'POST',
+              headers: { 
+                'Client-Id': settings.clientId, 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${cleanToken}`
+              },
+              body: JSON.stringify({ query }),
+            });
+            const result = await resp.json() as any;
+            if (result?.data?.videoPlaybackAccessToken) {
+              const { value, signature } = result.data.videoPlaybackAccessToken;
+              return { ...vod, streamUrl: `https://usher.ttvnw.net/vod/${vod.id}.m3u8?nauthor=twitch&allow_source=true&player=twitchweb&playlist_include_framerate=true&reassignments_supported=true&sig=${signature}&token=${encodeURIComponent(value)}` };
+            }
+          } catch (e) {}
+        }
+
+        // Strategy 2: Fallback to public resolution
+        const response = await fetch(GQL_URL, {
+          method: 'POST',
+          headers: { 'Client-Id': PUBLIC_CLIENT_ID, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+        });
+        const result = (await response.json()) as any;
+        const tokenData = result?.data?.videoPlaybackAccessToken;
+        
+        if (!tokenData || !tokenData.value || !tokenData.signature) {
+          const errMsg = result?.message || result?.errors?.[0]?.message || 'No stream access';
+          return { ...vod, error: `Stream Error: ${errMsg}` };
+        }
+
+        const { value: token, signature: sig } = tokenData;
+        const streamUrl = `https://usher.ttvnw.net/vod/${vod.id}.m3u8?nauthor=twitch&allow_source=true&player=twitchweb&playlist_include_framerate=true&reassignments_supported=true&sig=${sig}&token=${encodeURIComponent(token)}`;
+        return { ...vod, streamUrl };
+      } catch (e: any) { 
+        return { ...vod, error: `Fetch Error: ${e.message}` };
+      }
+    })
+  );
+}
+
+// API: JSON Playlist
+app.get('/api/playlist.json', async (c) => {
+  const resolved = await getResolvedVods(c.env);
+  return c.json(resolved.filter((v: any) => v.enabled !== false));
+});
+
+// API: M3U Playlist
+app.get('/api/playlist', async (c) => {
+  const resolved = await getResolvedVods(c.env);
+
+  if (resolved.length === 0) {
+    return c.text('#EXTM3U\n# No VODs in list\n', { headers: { 'Content-Type': 'audio/x-mpegurl' } });
+  }
+
+  let m3u = '#EXTM3U\n';
+  for (const v of resolved) {
+    if (v && v.streamUrl && v.enabled !== false) {
+      m3u += `#EXTINF:-1,${v.title}\n${v.streamUrl}\n`;
+    } else if (v && v.error && v.enabled !== false) {
+      m3u += `# DEBUG ERROR: ${v.error}\n`;
+    }
+  }
+
+  return c.text(m3u, {
+    headers: {
+      'Content-Type': 'audio/x-mpegurl',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+});
+
+// API: Save Twitch Stats Settings
+app.post('/api/twitch/stats/settings', async (c) => {
+  const body = await c.req.json();
+  const { token, followerGoal, subGoal, followerColor, subColor, labelSize, valueSize, goalSize } = body;
+  
+  const existingData = await c.env.RERUN_STORE.get('_twitch_stats_settings');
+  const existing = existingData ? JSON.parse(existingData) : null;
+
+  let broadcasterId = existing?.broadcasterId;
+  let username = existing?.username;
+  let clientId = existing?.clientId;
+  let cleanToken = existing?.token;
+
+  // Handle new token validation
+  if (token) {
+    cleanToken = token.replace('oauth:', '');
+    try {
+      const valRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+        headers: { 'Authorization': `OAuth ${cleanToken}` }
+      });
+      
+      if (!valRes.ok) {
+        const errorData = await valRes.json() as any;
+        return c.json({ error: 'Twitch Token Error: ' + (errorData.message || 'Invalid token') }, 401);
+      }
+
+      const valData = await valRes.json() as any;
+      broadcasterId = valData.user_id;
+      username = valData.login;
+      clientId = valData.client_id;
+    } catch (e: any) {
+      return c.json({ error: 'Connection Error: ' + e.message }, 500);
+    }
+  }
+
+  if (!cleanToken) return c.json({ error: 'Access token is required' }, 400);
+
+  // Save updated settings
+  await c.env.RERUN_STORE.put('_twitch_stats_settings', JSON.stringify({ 
+    broadcasterId, 
+    token: cleanToken, 
+    username,
+    clientId,
+    followerGoal: followerGoal !== undefined ? followerGoal : existing?.followerGoal,
+    subGoal: subGoal !== undefined ? subGoal : existing?.subGoal,
+    followerColor: followerColor || existing?.followerColor || '#9146ff',
+    subColor: subColor || existing?.subColor || '#d49aff',
+    followerTextColor: body.followerTextColor || existing?.followerTextColor || '#a1a1aa',
+    subTextColor: body.subTextColor || existing?.subTextColor || '#a1a1aa',
+    labelSize: labelSize || existing?.labelSize || 16,
+    valueSize: valueSize || existing?.valueSize || 38,
+    goalSize: goalSize || existing?.goalSize || 22,
+    scrollSpeed: body.scrollSpeed || existing?.scrollSpeed || 15,
+    followerCount: body.followerCount || existing?.followerCount || 10
+  }));
+
+  return c.json({ success: true, username, broadcasterId });
+});
+
+// API: Get Saved Stats Settings
+app.get('/api/twitch/stats/settings', async (c) => {
+  const data = await c.env.RERUN_STORE.get('_twitch_stats_settings');
+  if (!data) return c.json(null);
+  const settings = JSON.parse(data);
+  // Mask token for safety but return other fields
+  return c.json({
+    username: settings.username,
+    followerGoal: settings.followerGoal || '',
+    subGoal: settings.subGoal || '',
+    followerColor: settings.followerColor || '#9146ff',
+    subColor: settings.subColor || '#d49aff',
+    followerTextColor: settings.followerTextColor || '#a1a1aa',
+    subTextColor: settings.subTextColor || '#a1a1aa',
+    labelSize: settings.labelSize || 16,
+    valueSize: settings.valueSize || 38,
+    goalSize: settings.goalSize || 22,
+    scrollSpeed: settings.scrollSpeed || 15,
+    followerCount: settings.followerCount || 10,
+    hasToken: !!settings.token,
+    obsAddress: settings.obsAddress || 'localhost:44555',
+    obsPassword: settings.obsPassword || '',
+    obsSourceName: settings.obsSourceName || 'twitchreruns'
+  });
+});
+
+// API: Save OBS Settings
+app.post('/api/obs/settings', async (c) => {
+  const { address, password, sourceName } = await c.req.json();
+  const data = await c.env.RERUN_STORE.get('_twitch_stats_settings');
+  const settings = data ? JSON.parse(data) : {};
+  
+  await c.env.RERUN_STORE.put('_twitch_stats_settings', JSON.stringify({
+    ...settings,
+    obsAddress: address,
+    obsPassword: password,
+    obsSourceName: sourceName
+  }));
+  
+  return c.json({ success: true });
+});
+
+// API: Get Twitch Stats (Followers & Subs)
+app.get('/api/stats', async (c) => {
+  const settingsData = await c.env.RERUN_STORE.get('_twitch_stats_settings');
+  if (!settingsData) return c.json({ error: 'Stats not configured' });
+  
+  const settings = JSON.parse(settingsData);
+  const { broadcasterId, token, clientId, followerGoal, subGoal } = settings;
+
+  try {
+    const [followRes, subRes] = await Promise.all([
+      fetch(`https://api.twitch.tv/helix/channels/followers?broadcaster_id=${broadcasterId}`, {
+        headers: { 'Client-ID': clientId, 'Authorization': `Bearer ${token}` }
+      }),
+      fetch(`https://api.twitch.tv/helix/subscriptions?broadcaster_id=${broadcasterId}`, {
+        headers: { 'Client-ID': clientId, 'Authorization': `Bearer ${token}` }
+      })
+    ]);
+
+    const fData = await followRes.json() as any;
+    const sData = await subRes.json() as any;
+
+    return c.json({
+      followers: fData.total || 0,
+      subs: sData.total || 0,
+      followerGoal: followerGoal || null,
+      subGoal: subGoal || null,
+      followerColor: settings.followerColor || '#9146ff',
+      subColor: settings.subColor || '#d49aff',
+      followerTextColor: settings.followerTextColor || '#a1a1aa',
+      subTextColor: settings.subTextColor || '#a1a1aa',
+      labelSize: settings.labelSize || 16,
+      valueSize: settings.valueSize || 38,
+      goalSize: settings.goalSize || 22
+    });
+  } catch(e) { return c.json({ error: true }); }
+});
+
+// API: Update Twitch Category
+app.post('/api/twitch/update-category', async (c) => {
+  const { vodId } = await c.req.json();
+  const settingsData = await c.env.RERUN_STORE.get('_twitch_stats_settings');
+  if (!settingsData) return c.json({ error: 'No settings configured' }, 400);
+  
+  const settings = JSON.parse(settingsData);
+  if (!settings.token || !settings.broadcasterId || !settings.clientId) {
+    return c.json({ error: 'Missing tokens' }, 400);
+  }
+
+  const cleanToken = settings.token.replace('oauth:', '');
+  const publicClient = 'ue6666qo983tsx6so1t0vnawi233wa';
+
+  try {
+    // 1. Fetch the Game/Category of the VOD using GQL (safest way to get game without extra scopes)
+    const gqlRes = await fetch('https://gql.twitch.tv/gql', {
+      method: 'POST',
+      headers: { 'Client-Id': publicClient },
+      body: JSON.stringify({ query: `query { video(id: "${vodId}") { game { id name } } }` })
+    });
+
+    const gqlData = await gqlRes.json() as any;
+    const game = gqlData?.data?.video?.game;
+
+    if (!game || !game.id) {
+      return c.json({ error: 'Could not find a category for this VOD' }, 404);
+    }
+
+    // 2. Patch the Broadcaster's Channel Info with the new game_id
+    const patchRes = await fetch(`https://api.twitch.tv/helix/channels?broadcaster_id=${settings.broadcasterId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${cleanToken}`,
+        'Client-Id': settings.clientId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ game_id: game.id })
+    });
+
+    if (!patchRes.ok) {
+      const err = await patchRes.json() as any;
+      console.error('Twitch category update failing:', err);
+      // Wait, patching requires `channel:manage:broadcast` scope.
+      return c.json({ error: `Update failed: ${err.message || 'Check channel:manage:broadcast scope'}` }, patchRes.status as any);
+    }
+
+    return c.json({ success: true, gameName: game.name });
+  } catch(e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// API: Get Recent Followers
+app.get('/api/twitch/recent-followers', async (c) => {
+  const settingsData = await c.env.RERUN_STORE.get('_twitch_stats_settings');
+  if (!settingsData) return c.json({ error: 'No settings' }, 400);
+  const settings = JSON.parse(settingsData);
+  
+  if (!settings.token || !settings.broadcasterId || !settings.clientId) {
+    return c.json({ error: 'Missing tokens' }, 400);
+  }
+
+  try {
+    const followerCount = settings.followerCount || 10;
+    const res = await fetch(`https://api.twitch.tv/helix/channels/followers?broadcaster_id=${settings.broadcasterId}&first=${followerCount}`, {
+      headers: {
+        'Authorization': `Bearer ${settings.token.replace('oauth:', '')}`,
+        'Client-Id': settings.clientId
+      }
+    });
+    
+    if (!res.ok) {
+        return c.json({ error: 'Failed to fetch followers' }, res.status as any);
+    }
+
+    const data = await res.json() as any;
+    return c.json(data.data || []);
+  } catch(e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// Overlay Pages
+const overlayHtml = (title: string, field: string, goalField: string, colorField: string) => `
+<!DOCTYPE html>
+<html>
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@800&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 10px; font-family: 'Outfit', sans-serif; color: white; overflow: hidden; }
+        .wrapper { width: fit-content; min-width: 300px; white-space: nowrap; }
+        .stat-box { 
+            position: relative;
+            background: rgba(0,0,0,0.7); 
+            padding: 16px 24px 22px 24px; 
+            border-radius: 14px; 
+            border: 1px solid rgba(255,255,255,0.1); 
+            backdrop-filter: blur(10px);
+            overflow: hidden;
+        }
+        .content { display: flex; justify-content: space-between; align-items: center; gap: 30px; }
+        .label { font-size: var(--label-size); color: var(--label-color); text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600; }
+        .value-group { display: flex; align-items: baseline; gap: 8px; }
+        .value { font-size: var(--value-size); text-shadow: 0 0 10px var(--glow); font-weight: 800; line-height: 1; }
+        .goal { font-size: var(--goal-size); color: var(--label-color); line-height: 1; }
+        
+        .progress-container { 
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 4px; background: rgba(255,255,255,0.1); 
+            display: none;
+        }
+        .progress-bar { 
+            height: 100%; width: 0%; background: var(--color);
+            box-shadow: 0 0 10px var(--glow);
+            transition: width 1s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper" id="root" style="--color: #9146ff; --glow: rgba(145, 70, 255, 0.4); --label-size: 16px; --value-size: 38px; --goal-size: 22px; --label-color: #a1a1aa;">
+        <div class="stat-box">
+            <div class="content">
+                <div class="label">${title}</div>
+                <div class="value-group">
+                    <span id="val" class="value">...</span>
+                    <span id="goal" class="goal"></span>
+                </div>
+            </div>
+            <div class="progress-container" id="progCont">
+                <div class="progress-bar" id="progBar"></div>
+            </div>
+        </div>
+    </div>
+    <script>
+        async function update() {
+          try {
+            const res = await fetch('/api/stats');
+            const data = await res.json();
+            const color = data.${colorField} || '#9146ff';
+            const textColor = data.${colorField.replace('Color', 'TextColor')} || '#a1a1aa';
+            const root = document.getElementById('root');
+            root.style.setProperty('--color', color);
+            root.style.setProperty('--glow', color + '66');
+            root.style.setProperty('--label-color', textColor);
+            root.style.setProperty('--label-size', (data.labelSize || 16) + 'px');
+            root.style.setProperty('--value-size', (data.valueSize || 38) + 'px');
+            root.style.setProperty('--goal-size', (data.goalSize || 22) + 'px');
+
+            if (data.${field} !== undefined) {
+                const current = data.${field};
+                const goal = data.${goalField};
+                document.getElementById('val').innerText = current;
+                
+                if (goal) {
+                    document.getElementById('goal').innerText = ' / ' + goal;
+                    document.getElementById('progCont').style.display = 'block';
+                    const pct = Math.min(100, Math.max(0, (current / goal) * 100));
+                    document.getElementById('progBar').style.width = pct + '%';
+                } else {
+                    document.getElementById('goal').innerText = '';
+                    document.getElementById('progCont').style.display = 'none';
+                }
+            }
+          } catch(e) {}
+        }
+        setInterval(update, 30000);
+        update();
+    </script>
+</body>
+</html>
+`;
+
+app.get('/overlay/followers', (c) => c.html(overlayHtml('Followers', 'followers', 'followerGoal', 'followerColor')));
+app.get('/overlay/subs', (c) => c.html(overlayHtml('Subscribers', 'subs', 'subGoal', 'subColor')));
+
+app.get('/overlay/recent-followers', (c) => {
+  return c.html(`
+<!DOCTYPE html>
+<html>
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;800&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 10px; font-family: 'Outfit', sans-serif; color: white; overflow: hidden; }
+        .wrapper { width: 100%; white-space: nowrap; overflow: hidden; background: rgba(0,0,0,0.7); padding: 10px 0; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); display: flex; align-items: center; }
+        .label { padding-left: 15px; font-size: 16px; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 800; padding-right: 15px; border-right: 1px solid rgba(255,255,255,0.2); z-index: 2; background: inherit; }
+        .marquee-container { flex: 1; overflow: hidden; position: relative; }
+        .marquee { display: inline-block; animation: scroll 15s linear infinite; font-size: 18px; font-weight: 600; padding-left: 100%; }
+        .follower-item { margin-right: 30px; display: inline-flex; align-items: center; }
+        .follower-item::before { content: '♥'; color: #ef4444; margin-right: 6px; font-size: 14px; }
+        
+        @keyframes scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-100%); }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="label" style="background: rgb(22 22 26);">Recent Followers</div>
+        <div class="marquee-container">
+            <div class="marquee" id="followerList">Loading...</div>
+        </div>
+    </div>
+    <script>
+        async function fetchFollowers() {
+            try {
+                const statRes = await fetch('/api/twitch/stats/settings');
+                const statData = await statRes.json();
+                if (statData && statData.scrollSpeed) {
+                    document.querySelector('.marquee').style.animationDuration = statData.scrollSpeed + 's';
+                }
+
+                const res = await fetch('/api/twitch/recent-followers');
+                const followers = await res.json();
+                if (followers && Array.isArray(followers)) {
+                    document.getElementById('followerList').innerHTML = followers.map(f => '<span class="follower-item">' + f.user_name + '</span>').join('');
+                }
+            } catch(e) {}
+        }
+        fetchFollowers();
+        setInterval(fetchFollowers, 60000); // refresh every minute
+    </script>
+</body>
+</html>
+  `);
+});
+
+// Serve the Frontend UI (HTML/CSS)
+app.get('/', (c) => {
+  return c.html(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitch Rerun Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/obs-websocket-js@5.0.6/dist/obs-ws.global.js"></script>
+    <style>
+        :root {
+            --background: #0a0a0c;
+            --foreground: #f0f0f5;
+            --primary: #9146ff;
+            --primary-hover: #7b2df5;
+            --surface: #18181b;
+            --border: #3f3f46;
+            --glass: rgba(24, 24, 27, 0.8);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+        * { box-sizing: border-box; padding: 0; margin: 0; }
+        body {
+            background: var(--background);
+            color: var(--foreground);
+            font-family: 'Outfit', sans-serif;
+            min-height: 100vh;
+            background-image: radial-gradient(circle at 0% 0%, rgba(145, 70, 255, 0.1) 0%, transparent 50%), radial-gradient(circle at 100% 100%, rgba(145, 70, 255, 0.1) 0%, transparent 50%);
+            display: flex; justify-content: center; padding: 2rem 1rem;
+        }
+        .container { max-width: 800px; width: 100%; }
+        header { text-align: center; margin-bottom: 2rem; }
+        h1 { font-size: clamp(2rem, 8vw, 3rem); font-weight: 800; background: linear-gradient(to right, #9146ff, #d49aff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem; }
+        .subtitle { color: #a1a1aa; font-size: 1rem; }
+        .card { background: var(--glass); backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 1.5rem; padding: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-bottom: 1.5rem; }
+        .input-group { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
+        input { flex: 1; min-width: 0; background: #121214; border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.75rem 1rem; color: white; font-size: 1rem; transition: 0.2s; }
+        input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(145, 70, 255, 0.2); }
+        button { cursor: pointer; border: none; border-radius: 0.75rem; padding: 0.75rem 1.5rem; font-size: 1rem; font-weight: 600; transition: 0.2s; background: var(--primary); color: white; }
+        button:hover { background: var(--primary-hover); transform: translateY(-1px); }
+        button.secondary { background: #27272a; padding: 0.5rem 1rem; font-size: 0.8rem; }
+        button.danger { background: rgba(235, 4, 0, 0.1); color: #ef4444; padding: 0.5rem; display: flex; align-items: center; }
+        .vod-item { 
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 1rem; background: #18181b; border: 1px solid var(--border); 
+            border-radius: 1rem; margin-bottom: 0.75rem; gap: 1rem; transition: 0.2s;
+        }
+        .vod-item:hover { border-color: var(--primary); background: #1c1c1f; }
+        .vod-item.disabled { opacity: 0.5; filter: grayscale(0.5); }
+        
+        /* Custom Checkbox */
+        .custom-checkbox {
+            position: relative; width: 24px; height: 24px; flex: none;
+            appearance: none; background: #121214; border: 2px solid #3f3f46;
+            border-radius: 6px; cursor: pointer; transition: 0.2s;
+            display: grid; place-items: center; padding: 0 !important;
+        }
+        .custom-checkbox:checked {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+        .custom-checkbox:checked::after {
+            content: "✓"; color: white; font-size: 14px; font-weight: bold;
+        }
+        
+        .playlist-url { background: rgba(145, 70, 255, 0.05); border: 1px dashed var(--primary); padding: 1rem; border-radius: 0.75rem; display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; overflow: hidden; gap: 0.5rem; }
+        code { color: #d49aff; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 0; flex: 1; }
+        .empty { text-align: center; padding: 2rem; color: #71717a; }
+
+        @media (max-width: 600px) {
+            body { padding: 1rem 0.5rem; }
+            .card { padding: 1rem; border-radius: 1rem; }
+            .input-group { flex-direction: column; }
+            button { width: 100%; }
+            .vod-item { flex-direction: column; align-items: stretch; }
+            .vod-item img { width: 100% !important; height: auto !important; aspect-ratio: 16/9; }
+            .vod-item button.danger { align-self: flex-end; }
+            .obs-grid { grid-template-columns: 1fr !important; }
+            .playlist-url { flex-direction: column; align-items: stretch; }
+            code { margin-bottom: 0.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Rerun Manager</h1>
+            <p class="subtitle">Twitch VOD to OBS VLC Playlist</p>
+        </header>
+
+        <section class="card" id="obsConfigCard">
+            <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">OBS Connection</h2>
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                   <label style="font-size: 0.8rem; color: #a1a1aa;">OBS Address (usually localhost:44555)</label>
+                   <input type="text" id="obsAddress" value="localhost:44555" style="width: 100%;">
+                </div>
+                <div>
+                   <label style="font-size: 0.8rem; color: #a1a1aa;">OBS Password</label>
+                   <input type="password" id="obsPassword" placeholder="WebSocket Password" style="width: 100%;">
+                </div>
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <label style="font-size: 0.8rem; color: #a1a1aa;">VLC Source Name</label>
+                <input type="text" id="obsSourceName" value="twitchreruns" style="width: 100%;">
+            </div>
+            <button id="obsConnectBtn" onclick="connectOBS()" style="width: 100%;">Connect to OBS</button>
+            <div id="obsStatus" style="font-size: 0.8rem; margin-top: 0.5rem; text-align: center; color: #71717a;">Disconnected</div>
+        </section>
+
+        <section class="card" id="obsRemoteCard" style="display:none; padding-bottom: 2rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="font-size: 1.5rem;">OBS Remote Control</h2>
+                <div style="font-size: 0.9rem; color: #22c55e;" id="obsLiveStatus">● ONLINE</div>
+            </div>
+            <div style="background: #121214; padding: 1.5rem; border-radius: 1rem; text-align: center; margin-bottom: 1rem; border: 1px solid var(--border);">
+               <div style="font-size: 0.8rem; color: #a1a1aa; margin-bottom: 0.25rem;">CONTROLLING SOURCE</div>
+               <div id="activeSourceName" style="font-weight: 800; font-size: 1.2rem; color: #d49aff;">-</div>
+            </div>
+
+            <!-- PLAYING INFO -->
+            <div id="playingInfo" style="display: none; margin-bottom: 1.5rem; text-align: left; background: rgba(145, 70, 255, 0.05); padding: 1rem; border-radius: 0.75rem; border: 1px solid rgba(145, 70, 255, 0.2);">
+                <div style="font-size: 0.75rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Now Playing</div>
+                <div id="nowPlayingTitle" style="font-weight: 700; color: #f0f0f5; margin-bottom: 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">-</div>
+                <div style="font-size: 0.75rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Up Next</div>
+                <div id="nextPlayingTitle" style="font-weight: 600; color: #a1a1aa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">-</div>
+            </div>
+
+            <!-- SEEK BAR -->
+            <div style="margin-bottom: 1.5rem;">
+                <input type="range" id="obsSeekBar" value="0" min="0" max="100" style="width: 100%; height: 6px; appearance: none; background: #3f3f46; border-radius: 3px; outline: none; cursor: pointer; margin-bottom: 0.5rem;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #a1a1aa; font-family: monospace;">
+                    <span id="obsCurrentTime">00:00:00</span>
+                    <span id="obsTotalTime">00:00:00</span>
+                </div>
+            </div>
+
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem;">
+                <button onclick="obsCommand('play')" id="playBtn" style="background: #22c55e;">Play</button>
+                <button onclick="obsCommand('pause')" id="pauseBtn" style="background: #f59e0b;">Pause</button>
+            </div>
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <button onclick="obsCommand('previous')" class="secondary">⏮ Prev</button>
+                <button onclick="obsCommand('next')" class="secondary">Next ⏭</button>
+            </div>
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+                <button id="obsShuffleBtn" onclick="toggleObsShuffle()" class="secondary">Shuffle: OFF</button>
+                <button onclick="obsCommand('restart')" class="secondary" style="color: #60a5fa;">Restart</button>
+                <button onclick="obsCommand('stop')" class="secondary" style="color: #ef4444;">Stop</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="input-group">
+                <input type="text" id="vodInput" placeholder="Twitch VOD URL or ID">
+                <button id="addBtn" onclick="addVod()">Add VOD</button>
+            </div>
+            
+            <div id="vodList"></div>
+            
+            <div id="listActions" style="display:none; text-align: right; margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+                <div id="totalDuration" style="float: left; font-size: 0.9rem; color: #a1a1aa; font-weight: 600; padding-top: 0.5rem;">Total Duration: -</div>
+                <button class="secondary" onclick="clearVods()" style="color: #ef4444;">Clear All</button>
+            </div>
+            
+            <div id="playlistSection" style="display:none; margin-top: 2rem;">
+                <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 0.5rem;">OBS VLC Source URL:</p>
+                <div class="playlist-url">
+                    <code id="playlistUrl"></code>
+                    <button class="secondary" onclick="copyUrl()">Copy</button>
+                </div>
+                <p style="font-size: 0.75rem; color: #71717a; margin-top: 0.5rem; line-height: 1.4;">
+                    💡 <b>Tip:</b> If newly added VODs don't show up in OBS, click <b>Stop</b> and then <b>Restart</b> in the Remote Control above, or right-click the VLC source in OBS and click <b>Refresh/Reload</b>.
+                </p>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Twitch Overlays</h2>
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                   <label style="font-size: 0.8rem; color: #a1a1aa;">User Access Token</label>
+                   <input type="password" id="twStatToken" placeholder="oauth:xxxx" style="width: 100%;">
+                </div>
+                <div>
+                   <label style="font-size: 0.8rem; color: #a1a1aa;">Follower Goal (e.g. 100)</label>
+                   <input type="text" id="twFollowerGoal" placeholder="Leave empty for no goal" style="width: 100%;">
+                </div>
+                <div>
+                   <label style="font-size: 0.8rem; color: #a1a1aa;">Sub Goal (e.g. 50)</label>
+                   <input type="text" id="twSubGoal" placeholder="Leave empty for no goal" style="width: 100%;">
+                </div>
+            </div>
+            
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Follower Bar Color</label>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="color" id="twFollowerColor" value="#9146ff" style="width: 50px; height: 35px; border: none; padding: 0; background: none; cursor: pointer;">
+                        <input type="text" id="twFollowerHex" value="#9146ff" style="font-family: monospace; font-size: 0.8rem; padding: 0.25rem;">
+                    </div>
+                </div>
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Sub Bar Color</label>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="color" id="twSubColor" value="#d49aff" style="width: 50px; height: 35px; border: none; padding: 0; background: none; cursor: pointer;">
+                        <input type="text" id="twSubHex" value="#d49aff" style="font-family: monospace; font-size: 0.8rem; padding: 0.25rem;">
+                    </div>
+                </div>
+            </div>
+
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Follower Label Color</label>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="color" id="twFollowerTextColor" value="#a1a1aa" style="width: 50px; height: 35px; border: none; padding: 0; background: none; cursor: pointer;">
+                        <input type="text" id="twFollowerTextHex" value="#a1a1aa" style="font-family: monospace; font-size: 0.8rem; padding: 0.25rem;">
+                    </div>
+                </div>
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Sub Label Color</label>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="color" id="twSubTextColor" value="#a1a1aa" style="width: 50px; height: 35px; border: none; padding: 0; background: none; cursor: pointer;">
+                        <input type="text" id="twSubTextHex" value="#a1a1aa" style="font-family: monospace; font-size: 0.8rem; padding: 0.25rem;">
+                    </div>
+                </div>
+            </div>
+
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Label Size (<span id="labelSizeVal">16</span>px)</label>
+                    <input type="range" id="twLabelSize" min="10" max="40" value="16" style="width: 100%;" oninput="document.getElementById('labelSizeVal').innerText = this.value">
+                </div>
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Number Size (<span id="valueSizeVal">38</span>px)</label>
+                    <input type="range" id="twValueSize" min="20" max="80" value="38" style="width: 100%;" oninput="document.getElementById('valueSizeVal').innerText = this.value">
+                </div>
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Goal Size (<span id="goalSizeVal">22</span>px)</label>
+                    <input type="range" id="twGoalSize" min="10" max="50" value="22" style="width: 100%;" oninput="document.getElementById('goalSizeVal').innerText = this.value">
+                </div>
+            </div>
+            <div class="obs-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Scroll Speed (<span id="scrollSpeedVal">15</span>s)</label>
+                    <input type="range" id="twScrollSpeed" min="5" max="60" value="15" style="width: 100%;" oninput="document.getElementById('scrollSpeedVal').innerText = this.value">
+                </div>
+                <div style="background: #121214; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+                    <label style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 0.5rem;">Follower Count (<span id="followerCountVal">10</span>)</label>
+                    <input type="range" id="twFollowerCount" min="1" max="100" value="10" style="width: 100%;" oninput="document.getElementById('followerCountVal').innerText = this.value">
+                </div>
+            </div>
+            <p style="font-size: 0.75rem; color: #71717a; margin-bottom: 1rem;">
+                Need a token? <a href="https://twitchtokengenerator.com/" target="_blank" style="color: #9146ff; text-decoration: none; font-weight: 600;">Click here</a> to generate one with <code>channel:read:subscriptions</code>, <code>moderator:read:followers</code>, and <code>channel:manage:broadcast</code> scopes.
+            </p>
+            <p style="font-size: 0.75rem; color: #71717a; margin-bottom: 1rem;">
+                Note: Total Subs requires <code>channel:read:subscriptions</code>. Followers requires <code>moderator:read:followers</code>. Category Auto-Update requires <code>channel:manage:broadcast</code>.
+            </p>
+            <button onclick="saveTwitchStats(event)" style="width: 100%; background: #059669; margin-bottom: 2rem;">Save Overlay Settings</button>
+            
+            <div style="margin-bottom: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
+                <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 1rem; text-align: center;">Live Previews (What OBS will see)</p>
+                <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                    <iframe id="followPreview" src="" style="border: 1px solid var(--border); width: 280px; height: 80px; border-radius: 8px; background: #000;"></iframe>
+                    <iframe id="subPreview" src="" style="border: 1px solid var(--border); width: 280px; height: 80px; border-radius: 8px; background: #000;"></iframe>
+                    <iframe id="recentPreview" src="" style="border: 1px solid var(--border); width: 576px; height: 50px; border-radius: 8px; background: #000;"></iframe>
+                </div>
+            </div>
+
+            <div id="overlayLinks" style="display: flex; flex-direction: column; gap: 1rem;">
+                <div>
+                    <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 0.5rem;">Followers Overlay URL:</p>
+                    <div class="playlist-url">
+                        <code id="followOverlayUrl"></code>
+                        <button class="secondary" onclick="copyText('followOverlayUrl')">Copy</button>
+                    </div>
+                </div>
+                <div>
+                    <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 0.5rem;">Subscribers Overlay URL:</p>
+                    <div class="playlist-url">
+                        <code id="subOverlayUrl"></code>
+                        <button class="secondary" onclick="copyText('subOverlayUrl')">Copy</button>
+                    </div>
+                </div>
+                <div>
+                    <p style="font-size: 0.9rem; color: #a1a1aa; margin-bottom: 0.5rem;">Recent Followers Overlay URL:</p>
+                    <div class="playlist-url">
+                        <code id="recentOverlayUrl"></code>
+                        <button class="secondary" onclick="copyText('recentOverlayUrl')">Copy</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const input = document.getElementById('vodInput');
+        const list = document.getElementById('vodList');
+        const listActions = document.getElementById('listActions');
+        const playlistSection = document.getElementById('playlistSection');
+        const playlistUrl = document.getElementById('playlistUrl');
+
+        async function loadVods() {
+            try {
+                // Using playlist.json ensures we check stream status for each VOD
+                const res = await fetch('/api/playlist.json');
+                const vods = await res.json();
+                renderVods(vods);
+            } catch(e) { 
+                list.innerHTML = '<div class="empty">Error connecting to database.</div>';
+            }
+        }
+
+        function renderVods(vods) {
+            if (!Array.isArray(vods) || vods.length === 0) {
+                list.innerHTML = '<div class="empty">No VODs added yet. Add a Twitch VOD URL above ⬆️</div>';
+                playlistSection.style.display = 'none';
+                listActions.style.display = 'none';
+                return;
+            }
+            
+            playlistSection.style.display = 'block';
+            listActions.style.display = 'block';
+            
+            // Add cache buster to the URL for copy-pasting
+            const baseUrl = window.location.origin + '/api/playlist';
+            playlistUrl.innerText = baseUrl + '?t=' + Date.now();
+            
+            list.innerHTML = vods.map(v => \`
+                <div class="vod-item \${v.enabled === false ? 'disabled' : ''}">
+                    <div style="display: flex; gap: 1rem; align-items: center; flex: 1; min-width: 0;">
+                        <input type="checkbox" class="custom-checkbox" \${v.enabled !== false ? 'checked' : ''} 
+                               onchange="toggleVod('\${v.id}', this.checked)">
+                        <div style="position: relative;">
+                            <img src="\${v.thumbnailUrl || ''}" 
+                                 onerror="this.src='https://vod-secure.twitch.tv/_404/404_processing_320x180.png'" 
+                                 style="width: 100px; min-width: 100px; height: 56px; border-radius: 0.5rem; object-fit: cover;" alt="thumbnail" />
+                            \${v.error ? 
+                                \`<div style="position: absolute; bottom: 0; left: 0; right: 0; background: rgba(239, 68, 68, 0.9); color: white; font-size: 0.6rem; padding: 2px; text-align: center; border-bottom-left-radius: 0.5rem; border-bottom-right-radius: 0.5rem;">ERROR</div>\` : 
+                                \`<div style="position: absolute; bottom: 0; left: 0; right: 0; background: rgba(34, 197, 94, 0.9); color: white; font-size: 0.6rem; padding: 2px; text-align: center; border-bottom-left-radius: 0.5rem; border-bottom-right-radius: 0.5rem;">READY</div>\`
+                            }
+                        </div>
+                        <div style="min-width: 0; flex: 1;">
+                            <div style="font-weight:600; margin-bottom: 0.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.95rem;">\${v.title}</div>
+                            <div style="font-size:0.75rem; color:#a1a1aa; line-height: 1;">\${v.author || 'Unknown'} &bull; \${v.duration || '0s'}</div>
+                            \${v.error ? \`<div style="font-size: 0.65rem; color: #ef4444; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">\${v.error}</div>\` : ''}
+                        </div>
+                    </div>
+                    <button class="danger" onclick="deleteVod('\${v.id}')" style="margin-left: 0.5rem; flex-shrink: 0; padding: 0.4rem;">✕</button>
+                </div>
+            \`.trim()).join('');
+
+            // Calculate total duration
+            let totalSeconds = 0;
+            vods.forEach(v => {
+                totalSeconds += parseDuration(v.duration);
+            });
+            
+            const h = Math.floor(totalSeconds / 3600);
+            const m = Math.floor((totalSeconds % 3600) / 60);
+            const s = totalSeconds % 60;
+            
+            let durText = 'Total Duration: ';
+            if (h > 0) durText += h + 'h ';
+            if (m > 0 || h > 0) durText += m + 'm ';
+            durText += s + 's';
+            
+            document.getElementById('totalDuration').innerText = durText;
+            window.currentVods = vods; // Store globally for OBS sync
+        }
+
+        function parseDuration(d) {
+            if (!d) return 0;
+            // Handle Twitch format: 1h2m3s
+            const h = d.match(/(\\d+)h/);
+            const m = d.match(/(\\d+)m/);
+            const s = d.match(/(\\d+)s/);
+            if (h || m || s) {
+                return (parseInt(h ? h[1] : 0) * 3600) + 
+                       (parseInt(m ? m[1] : 0) * 60) + 
+                       parseInt(s ? s[1] : 0);
+            }
+            // Fallback for HH:MM:SS
+            const parts = d.split(':').map(Number);
+            if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+            if (parts.length === 2) return (parts[0] * 60) + parts[1];
+            return 0;
+        }
+
+        async function addVod() {
+            const val = input.value.trim();
+            const match = val.match(/(?:\\/videos\\/|v=)(\\d+)/);
+            const vodId = match ? match[1] : val.match(/^\\d+$/) ? val : null;
+            
+            if (!vodId) return alert('Invalid Twitch VOD URL. Try: https://www.twitch.tv/videos/1234567');
+
+            const btn = document.getElementById('addBtn');
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
+            
+            try {
+                const res = await fetch('/api/vods', {
+                    method: 'POST',
+                    body: JSON.stringify({ vodId }),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                input.value = '';
+                renderVods(await res.json());
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Add VOD';
+            }
+        }
+
+        async function toggleVod(id, enabled) {
+            const res = await fetch('/api/vods/toggle', {
+                method: 'POST',
+                body: JSON.stringify({ id, enabled }),
+                headers: { 'Content-Type': 'application/json' }
+            });
+            renderVods(await res.json());
+        }
+
+        async function deleteVod(id) {
+            const res = await fetch('/api/vods?id=' + id, { method: 'DELETE' });
+            renderVods(await res.json());
+        }
+
+        async function clearVods() {
+            if (!confirm('Are you sure you want to clear all VODs?')) return;
+            const res = await fetch('/api/vods/clear', { method: 'POST' });
+            renderVods(await res.json());
+        }
+
+        function copyUrl() {
+            navigator.clipboard.writeText(playlistUrl.innerText);
+            const btn = event.target;
+            btn.textContent = '✓ Copied!';
+            setTimeout(() => btn.textContent = 'Copy', 2000);
+        }
+
+        function copyText(id) {
+            const el = document.getElementById(id);
+            navigator.clipboard.writeText(el.innerText);
+            const btn = event.target;
+            const old = btn.textContent;
+            btn.textContent = '✓ Copied!';
+            setTimeout(() => btn.textContent = old, 2000);
+        }
+
+        async function saveTwitchStats(e) {
+            const token = document.getElementById('twStatToken').value.trim();
+            const followerGoal = document.getElementById('twFollowerGoal').value.trim();
+            const subGoal = document.getElementById('twSubGoal').value.trim();
+            const followerColor = document.getElementById('twFollowerColor').value;
+            const subColor = document.getElementById('twSubColor').value;
+            const followerTextColor = document.getElementById('twFollowerTextColor').value;
+            const subTextColor = document.getElementById('twSubTextColor').value;
+            const labelSize = parseInt(document.getElementById('twLabelSize').value);
+            const valueSize = parseInt(document.getElementById('twValueSize').value);
+            const goalSize = parseInt(document.getElementById('twGoalSize').value);
+            const scrollSpeed = parseInt(document.getElementById('twScrollSpeed').value);
+            const followerCount = parseInt(document.getElementById('twFollowerCount').value);
+            
+            if (!token && !followerGoal && !subGoal && !followerColor) return;
+            
+            // If called from button click, show loading
+            const btn = e?.target?.tagName === 'BUTTON' ? e.target : null;
+            if (btn) {
+                btn.textContent = 'Saving Settings...';
+                btn.disabled = true;
+            }
+
+            try {
+                const res = await fetch('/api/twitch/stats/settings', {
+                    method: 'POST',
+                    body: JSON.stringify({ 
+                        token, followerGoal, subGoal, followerColor, subColor, 
+                        followerTextColor, subTextColor, labelSize, valueSize, goalSize, scrollSpeed, followerCount
+                    }),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    if (btn) alert('Settings updated!');
+                    if (data.username) {
+                        document.getElementById('twStatToken').placeholder = 'Token Saved (' + data.username + ')';
+                        document.getElementById('twStatToken').value = '';
+                    }
+                    // Refresh previews
+                    document.getElementById('followPreview').src = '/overlay/followers?t=' + Date.now();
+                    document.getElementById('subPreview').src = '/overlay/subs?t=' + Date.now();
+                    document.getElementById('recentPreview').src = '/overlay/recent-followers?t=' + Date.now();
+                } else {
+                    if (btn) alert('Error: ' + data.error);
+                }
+            } catch(e) { if (btn) alert('Error: ' + e.message); }
+            finally {
+                if (btn) {
+                    btn.textContent = 'Save Overlay Settings';
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        /* OBS REMOTE LOGIC */
+        let obs;
+        const obsStatus = document.getElementById('obsStatus');
+        const obsRemoteCard = document.getElementById('obsRemoteCard');
+        const obsConfigCard = document.getElementById('obsConfigCard');
+        const activeSourceName = document.getElementById('activeSourceName');
+        
+        let obsConnected = false;
+        let obsShuffle = false;
+
+        async function connectOBS() {
+            if (typeof OBSWebSocket === 'undefined') {
+                obsStatus.innerText = 'Error: OBS Library not loaded';
+                return;
+            }
+            if (!obs) obs = new OBSWebSocket();
+            
+            let address = document.getElementById('obsAddress').value.trim();
+            const password = document.getElementById('obsPassword').value;
+            const sourceName = document.getElementById('obsSourceName').value;
+
+            // Auto-handle protocol
+            if (!address.startsWith('ws://') && !address.startsWith('wss://')) {
+                address = 'ws://' + address;
+            }
+
+            obsStatus.innerText = 'Connecting...';
+            try {
+                await obs.connect(address, password);
+                obsConnected = true;
+                obsStatus.innerText = 'Connected!';
+                obsConfigCard.style.display = 'none';
+                obsRemoteCard.style.display = 'block';
+                activeSourceName.innerText = sourceName;
+                syncObsState();
+            } catch (error) {
+                let msg = error.message;
+                if (window.location.protocol === 'https:' && address.startsWith('ws://')) {
+                    msg = "Mixed Content Block: Browsers block 'ws' connections on 'https' sites. Try using your Local IP (192.168.x.x) or use ngrok for a 'wss' link.";
+                }
+                obsStatus.innerText = 'Connection Failed: ' + msg;
+                console.error('OBS Connect Error:', error);
+            }
+        }
+
+        async function obsCommand(action) {
+            if (!obsConnected) return;
+            const sourceName = document.getElementById('obsSourceName').value;
+            
+            try {
+                // Correct 5.x request name is TriggerMediaInputAction
+                let obsAction = '';
+                if (action === 'playpause') obsAction = 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_PLAY_PAUSE';
+                if (action === 'play') obsAction = 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_PLAY';
+                if (action === 'pause') obsAction = 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_PAUSE';
+                if (action === 'next') obsAction = 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_NEXT';
+                if (action === 'previous') obsAction = 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_PREVIOUS';
+                if (action === 'stop') obsAction = 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_STOP';
+                if (action === 'restart') obsAction = 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART';
+
+                if (obsAction) {
+                    await obs.call('TriggerMediaInputAction', {
+                        inputName: sourceName,
+                        mediaAction: obsAction
+                    });
+                    
+                    // If stopped, hide playing info immediately
+                    if (action === 'stop') {
+                        const info = document.getElementById('playingInfo');
+                        if (info) info.style.display = 'none';
+                    }
+                }
+            } catch (e) {
+                alert('OBS Error: ' + e.message);
+            }
+        }
+
+        async function toggleObsShuffle() {
+            if (!obsConnected) return;
+            const sourceName = document.getElementById('obsSourceName').value;
+            obsShuffle = !obsShuffle;
+            
+            try {
+                // VLC source specific settings
+                await obs.call('SetInputSettings', {
+                    inputName: sourceName,
+                    inputSettings: {
+                        shuffle: obsShuffle
+                    }
+                });
+                document.getElementById('obsShuffleBtn').innerText = 'Shuffle: ' + (obsShuffle ? 'ON' : 'OFF');
+                document.getElementById('obsShuffleBtn').style.color = obsShuffle ? '#d49aff' : 'inherit';
+            } catch (e) {
+                alert('Could not toggle shuffle. Ensure source is a VLC Video Source.');
+            }
+        }
+
+        async function syncObsState() {
+            if (!obsConnected) return;
+            const sourceName = document.getElementById('obsSourceName').value;
+            try {
+                const { inputSettings } = await obs.call('GetInputSettings', { inputName: sourceName });
+                if (typeof inputSettings.shuffle !== 'undefined') {
+                    obsShuffle = inputSettings.shuffle;
+                    document.getElementById('obsShuffleBtn').innerText = 'Shuffle: ' + (obsShuffle ? 'ON' : 'OFF');
+                    document.getElementById('obsShuffleBtn').style.color = obsShuffle ? '#d49aff' : 'inherit';
+                }
+            } catch(e) {}
+        }
+
+        const seekBar = document.getElementById('obsSeekBar');
+        const currentTimeEl = document.getElementById('obsCurrentTime');
+        const totalTimeEl = document.getElementById('obsTotalTime');
+        let isSeeking = false;
+
+        seekBar.onmousedown = () => { isSeeking = true; };
+        seekBar.onmouseup = async () => {
+            isSeeking = false;
+            if (!obsConnected) return;
+            const sourceName = document.getElementById('obsSourceName').value;
+            try {
+                await obs.call('SetMediaInputCursor', {
+                    inputName: sourceName,
+                    mediaCursor: parseInt(seekBar.value)
+                });
+            } catch(e) {}
+        };
+
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const h = Math.floor(totalSeconds / 3600);
+            const m = Math.floor((totalSeconds % 3600) / 60);
+            const s = totalSeconds % 60;
+            return (h > 0 ? h + ':' : '') + 
+                   (m < 10 && h > 0 ? '0' + m : m) + ':' + 
+                   (s < 10 ? '0' + s : s);
+        }
+
+        setInterval(async () => {
+            if (!obsConnected || isSeeking) return;
+            const sourceName = document.getElementById('obsSourceName').value;
+            try {
+                const status = await obs.call('GetMediaInputStatus', { inputName: sourceName });
+                const info = document.getElementById('playingInfo');
+
+                if (status.mediaDuration > 0 && status.mediaState !== 'OBS_MEDIA_STATE_STOPPED') {
+                    seekBar.max = status.mediaDuration;
+                    seekBar.value = status.mediaCursor;
+                    currentTimeEl.innerText = formatTime(status.mediaCursor);
+                    totalTimeEl.innerText = formatTime(status.mediaDuration);
+
+                    // Auto-sync playing info
+                    if (window.currentVods) {
+                        const obsDurationSec = Math.round(status.mediaDuration / 1000);
+                        const currentIndex = window.currentVods.findIndex(v => {
+                            const vSec = parseDuration(v.duration);
+                            return Math.abs(vSec - obsDurationSec) < 5; // 5s tolerance
+                        });
+
+                        if (currentIndex !== -1) {
+                            const currentVod = window.currentVods[currentIndex];
+                            
+                            // Check if VOD changed to auto-update category
+                            if (window.currentPlayingVodId !== currentVod.id) {
+                                window.currentPlayingVodId = currentVod.id;
+                                fetch('/api/twitch/update-category', {
+                                    method: 'POST',
+                                    body: JSON.stringify({ vodId: currentVod.id }),
+                                    headers: { 'Content-Type': 'application/json' }
+                                }).catch(e => console.error('Auto category update failed', e));
+                            }
+
+                            if (info) info.style.display = 'block';
+                            document.getElementById('nowPlayingTitle').innerText = currentVod.title;
+                            
+                            const nextIndex = (currentIndex + 1) % window.currentVods.length;
+                            document.getElementById('nextPlayingTitle').innerText = obsShuffle ? 'Shuffle Active (Random)' : window.currentVods[nextIndex].title;
+                        } else {
+                            if (info) info.style.display = 'none';
+                        }
+                    }
+                } else {
+                    // Hide info if stopped or duration is 0
+                    if (info) info.style.display = 'none';
+                    seekBar.value = 0;
+                    currentTimeEl.innerText = '00:00:00';
+                }
+            } catch(e) {}
+        }, 1000);
+
+        if (typeof OBSWebSocket !== 'undefined') {
+            obs = new OBSWebSocket();
+            obs.on('ConnectionClosed', () => {
+                obsConnected = false;
+                obsStatus.innerText = 'Connection Closed';
+                obsConfigCard.style.display = 'block';
+                obsRemoteCard.style.display = 'none';
+            });
+        }
+        /* END OBS REMOTE LOGIC */
+
+        async function loadSettings() {
+            try {
+                // Overlay links
+                document.getElementById('followOverlayUrl').innerText = window.location.origin + '/overlay/followers';
+                document.getElementById('subOverlayUrl').innerText = window.location.origin + '/overlay/subs';
+                document.getElementById('recentOverlayUrl').innerText = window.location.origin + '/overlay/recent-followers';
+
+                // Previews
+                document.getElementById('followPreview').src = '/overlay/followers';
+                document.getElementById('subPreview').src = '/overlay/subs';
+                document.getElementById('recentPreview').src = '/overlay/recent-followers';
+                
+                // Fetch saved settings
+                const res = await fetch('/api/twitch/stats/settings');
+                const settings = await res.json();
+                if (settings) {
+                    if (settings.hasToken) {
+                        document.getElementById('twStatToken').placeholder = 'Token Saved (' + settings.username + ')';
+                    }
+                    document.getElementById('twFollowerGoal').value = settings.followerGoal || '';
+                    document.getElementById('twSubGoal').value = settings.subGoal || '';
+                    
+                    if (settings.followerColor) {
+                        document.getElementById('twFollowerColor').value = settings.followerColor;
+                        document.getElementById('twFollowerHex').value = settings.followerColor;
+                    }
+                    if (settings.subColor) {
+                        document.getElementById('twSubColor').value = settings.subColor;
+                        document.getElementById('twSubHex').value = settings.subColor;
+                    }
+                    if (settings.followerTextColor) {
+                        document.getElementById('twFollowerTextColor').value = settings.followerTextColor;
+                        document.getElementById('twFollowerTextHex').value = settings.followerTextColor;
+                    }
+                    if (settings.subTextColor) {
+                        document.getElementById('twSubTextColor').value = settings.subTextColor;
+                        document.getElementById('twSubTextHex').value = settings.subTextColor;
+                    }
+                    if (settings.labelSize) {
+                        document.getElementById('twLabelSize').value = settings.labelSize;
+                        document.getElementById('labelSizeVal').innerText = settings.labelSize;
+                    }
+                    if (settings.valueSize) {
+                        document.getElementById('twValueSize').value = settings.valueSize;
+                        document.getElementById('valueSizeVal').innerText = settings.valueSize;
+                    }
+                    if (settings.goalSize) {
+                        document.getElementById('twGoalSize').value = settings.goalSize;
+                        document.getElementById('goalSizeVal').innerText = settings.goalSize;
+                    }
+                    if (settings.scrollSpeed) {
+                        document.getElementById('twScrollSpeed').value = settings.scrollSpeed;
+                        document.getElementById('scrollSpeedVal').innerText = settings.scrollSpeed;
+                    }
+                    if (settings.followerCount) {
+                        document.getElementById('twFollowerCount').value = settings.followerCount;
+                        document.getElementById('followerCountVal').innerText = settings.followerCount;
+                    }
+                    if (settings.obsAddress) document.getElementById('obsAddress').value = settings.obsAddress;
+                    if (settings.obsPassword) document.getElementById('obsPassword').value = settings.obsPassword;
+                    if (settings.obsSourceName) document.getElementById('obsSourceName').value = settings.obsSourceName;
+                }
+            } catch(e) {}
+        }
+
+        // Auto-save & sync
+        const autoSave = () => saveTwitchStats();
+        
+        document.getElementById('twFollowerColor').oninput = (e) => {
+            document.getElementById('twFollowerHex').value = e.target.value;
+            autoSave();
+        };
+        document.getElementById('twSubColor').oninput = (e) => {
+            document.getElementById('twSubHex').value = e.target.value;
+            autoSave();
+        };
+        document.getElementById('twFollowerHex').onchange = (e) => {
+            document.getElementById('twFollowerColor').value = e.target.value;
+            autoSave();
+        };
+        document.getElementById('twSubHex').onchange = (e) => {
+            document.getElementById('twSubColor').value = e.target.value;
+            autoSave();
+        };
+
+        document.getElementById('twFollowerTextColor').oninput = (e) => {
+            document.getElementById('twFollowerTextHex').value = e.target.value;
+            autoSave();
+        };
+        document.getElementById('twSubTextColor').oninput = (e) => {
+            document.getElementById('twSubTextHex').value = e.target.value;
+            autoSave();
+        };
+        document.getElementById('twFollowerTextHex').onchange = (e) => {
+            document.getElementById('twFollowerTextColor').value = e.target.value;
+            autoSave();
+        };
+        document.getElementById('twSubTextHex').onchange = (e) => {
+            document.getElementById('twSubTextColor').value = e.target.value;
+            autoSave();
+        };
+        
+        document.getElementById('twFollowerGoal').onchange = autoSave;
+        document.getElementById('twSubGoal').onchange = autoSave;
+        document.getElementById('twLabelSize').onchange = autoSave;
+        document.getElementById('twValueSize').onchange = autoSave;
+        document.getElementById('twGoalSize').onchange = autoSave;
+        document.getElementById('twScrollSpeed').onchange = autoSave;
+        document.getElementById('twFollowerCount').onchange = autoSave;
+        
+        // OBS Auto-save
+        const saveObsSettings = async () => {
+            const address = document.getElementById('obsAddress').value.trim();
+            const password = document.getElementById('obsPassword').value;
+            const sourceName = document.getElementById('obsSourceName').value;
+            await fetch('/api/obs/settings', {
+                method: 'POST',
+                body: JSON.stringify({ address, password, sourceName }),
+                headers: { 'Content-Type': 'application/json' }
+            });
+        };
+        
+        document.getElementById('obsAddress').onchange = saveObsSettings;
+        document.getElementById('obsPassword').onchange = saveObsSettings;
+        document.getElementById('obsSourceName').onchange = saveObsSettings;
+
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') addVod(); });
+        loadVods();
+        loadSettings();
+    </script>
+</body>
+</html>
+  `);
+});
+
+export const onRequest = handle(app);
