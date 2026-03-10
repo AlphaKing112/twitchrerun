@@ -1,36 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Twitch Rerun Manager 🎮
 
-## Getting Started
+A self-hosted Twitch VOD rerun system built with **Hono + Cloudflare Pages + KV**. Play your old VODs on loop through OBS with a VLC source, complete with live overlays and automatic stream category updates.
 
-First, run the development server:
+## Features
+
+- 📺 **VOD Playlist** — Add Twitch VOD URLs, auto-resolves stream URLs for VLC
+- ✅ **Enable/Disable VODs** — Toggle individual VODs without deleting them
+- 🎮 **OBS Remote Control** — Play, pause, stop, next, previous, shuffle via WebSocket
+- 🔄 **Auto Category Update** — Automatically updates your Twitch stream category when a new VOD starts
+- 📊 **Follower & Sub Overlays** — Live browser source overlays with progress bars and goals
+- ❤️ **Recent Followers Ticker** — Scrolling marquee of your latest followers
+- 🎨 **Fully Customizable** — Colors, sizes, scroll speed, follower count — all from the dashboard
+
+## Deploy Your Own (Cloudflare Pages)
+
+### 1. Prerequisites
+
+- [Node.js](https://nodejs.org/) v18+
+- [Cloudflare account](https://dash.cloudflare.com/) (free tier works)
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) — `npm install -g wrangler`
+
+### 2. Clone & Install
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/AlphaKing112/twitchrerun.git
+cd twitchrerun
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Create a KV Namespace
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+wrangler kv namespace create RERUN_STORE
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Copy the `id` from the output and update `wrangler.toml`:
 
-## Learn More
+```toml
+[[kv_namespaces]]
+binding = "RERUN_STORE"
+id = "YOUR_KV_ID_HERE"
+```
 
-To learn more about Next.js, take a look at the following resources:
+### 4. Build & Deploy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run build
+npx wrangler pages deploy .next --project-name your-project-name
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 5. Set Up the Dashboard
 
-## Deploy on Vercel
+1. Open your deployed URL
+2. Connect to OBS WebSocket (Tools → WebSocket Server Settings in OBS)
+3. Go to **Twitch Overlays** and enter your User Access Token
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Getting a Twitch Token
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Go to [twitchtokengenerator.com](https://twitchtokengenerator.com/) and generate a token with these scopes:
+
+- `moderator:read:followers` — for follower count & recent followers
+- `channel:read:subscriptions` — for subscriber count
+- `channel:manage:broadcast` — for auto category updates
+
+### Adding Overlays to OBS
+
+Copy the overlay URLs from the dashboard and add them as **Browser Sources** in OBS:
+
+| Overlay                 | Recommended Size |
+| ----------------------- | ---------------- |
+| Followers               | 300 × 80         |
+| Subscribers             | 300 × 80         |
+| Recent Followers Ticker | 1200 × 50        |
+
+## Local Development
+
+```bash
+# Run Next.js dev server (UI only)
+npm run dev
+
+# Run with Cloudflare Workers runtime (full local test)
+npx wrangler pages dev .next
+```
+
+## Tech Stack
+
+- [Hono](https://hono.dev/) — Lightweight web framework for Cloudflare Workers
+- [Next.js](https://nextjs.org/) — Frontend build tool
+- [@cloudflare/next-on-pages](https://github.com/cloudflare/next-on-pages) — Adapter
+- [Cloudflare KV](https://developers.cloudflare.com/kv/) — Persistent storage
+- [obs-websocket-js](https://github.com/obs-websocket-community-projects/obs-websocket-js) — OBS remote control
