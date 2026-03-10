@@ -1276,7 +1276,7 @@ app.get('/', (c) => {
             setTimeout(() => btn.textContent = old, 2000);
         }
 
-        async function saveTwitchStats(e) {
+        async function saveTwitchStats(e, previewIds = null) {
             const token = document.getElementById('twStatToken').value.trim();
             const followerGoal = document.getElementById('twFollowerGoal').value.trim();
             const subGoal = document.getElementById('twSubGoal').value.trim();
@@ -1325,12 +1325,20 @@ app.get('/', (c) => {
                         document.getElementById('twStatToken').placeholder = 'Token Saved (' + data.username + ')';
                         document.getElementById('twStatToken').value = '';
                     }
-                    // Refresh previews
-                    document.getElementById('followPreview').src = '/overlay/followers?t=' + Date.now();
-                    document.getElementById('subPreview').src = '/overlay/subs?t=' + Date.now();
-                    document.getElementById('recentPreview').src = '/overlay/recent-followers?t=' + Date.now();
-                    document.getElementById('countdownPreview').src = '/overlay/countdown?t=' + Date.now();
-                    document.getElementById('countdownLink').innerText = window.location.origin + '/overlay/countdown?t=' + Date.now();
+
+                    // Refresh specific previews or all
+                    const now = Date.now();
+                    const targets = previewIds || ['followPreview', 'subPreview', 'recentPreview', 'countdownPreview'];
+                    targets.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) {
+                            const baseUrl = el.src.split('?')[0];
+                            el.src = baseUrl + '?t=' + now;
+                        }
+                    });
+                    
+                    // Always update the link text
+                    document.getElementById('countdownLink').innerText = window.location.origin + '/overlay/countdown?t=' + now;
                 } else {
                     if (btn) alert('Error: ' + data.error);
                 }
@@ -1680,72 +1688,72 @@ app.get('/', (c) => {
         }
 
         // Auto-save & sync
-        const autoSave = () => saveTwitchStats();
+        const autoSave = (previewIds) => saveTwitchStats(null, previewIds);
         
         document.getElementById('twFollowerColor').oninput = (e) => {
             document.getElementById('twFollowerHex').value = e.target.value;
-            autoSave();
+            autoSave(['followPreview']);
         };
         document.getElementById('twSubColor').oninput = (e) => {
             document.getElementById('twSubHex').value = e.target.value;
-            autoSave();
+            autoSave(['subPreview']);
         };
         document.getElementById('twFollowerHex').onchange = (e) => {
             document.getElementById('twFollowerColor').value = e.target.value;
-            autoSave();
+            autoSave(['followPreview']);
         };
         document.getElementById('twSubHex').onchange = (e) => {
             document.getElementById('twSubColor').value = e.target.value;
-            autoSave();
+            autoSave(['subPreview']);
         };
 
         document.getElementById('twFollowerTextColor').oninput = (e) => {
             document.getElementById('twFollowerTextHex').value = e.target.value;
-            autoSave();
+            autoSave(['followPreview']);
         };
         document.getElementById('twSubTextColor').oninput = (e) => {
             document.getElementById('twSubTextHex').value = e.target.value;
-            autoSave();
+            autoSave(['subPreview']);
         };
         document.getElementById('twFollowerTextHex').onchange = (e) => {
             document.getElementById('twFollowerTextColor').value = e.target.value;
-            autoSave();
+            autoSave(['followPreview']);
         };
         document.getElementById('twSubTextHex').onchange = (e) => {
             document.getElementById('twSubTextColor').value = e.target.value;
-            autoSave();
+            autoSave(['subPreview']);
         };
         
-        document.getElementById('twFollowerGoal').onchange = autoSave;
-        document.getElementById('twSubGoal').onchange = autoSave;
-        document.getElementById('twLabelSize').onchange = autoSave;
-        document.getElementById('twValueSize').onchange = autoSave;
-        document.getElementById('twGoalSize').onchange = autoSave;
-        document.getElementById('twScrollSpeed').onchange = autoSave;
-        document.getElementById('twFollowerCount').onchange = autoSave;
-        document.getElementById('twPollingInterval').onchange = autoSave;
-        document.getElementById('twLiveTime').onchange = autoSave;
-        document.getElementById('twLiveLabel').onchange = autoSave;
-        document.getElementById('twLiveTZ').onchange = autoSave;
+        document.getElementById('twFollowerGoal').onchange = () => autoSave(['followPreview']);
+        document.getElementById('twSubGoal').onchange = () => autoSave(['subPreview']);
+        document.getElementById('twLabelSize').onchange = () => autoSave(['followPreview', 'subPreview']);
+        document.getElementById('twValueSize').onchange = () => autoSave(['followPreview', 'subPreview']);
+        document.getElementById('twGoalSize').onchange = () => autoSave(['followPreview', 'subPreview']);
+        document.getElementById('twScrollSpeed').onchange = () => autoSave(['recentPreview']);
+        document.getElementById('twFollowerCount').onchange = () => autoSave(['recentPreview']);
+        document.getElementById('twPollingInterval').onchange = () => autoSave(['recentPreview']);
+        document.getElementById('twLiveTime').onchange = () => autoSave(['countdownPreview']);
+        document.getElementById('twLiveLabel').onchange = () => autoSave(['countdownPreview']);
+        document.getElementById('twLiveTZ').onchange = () => autoSave(['countdownPreview']);
 
         document.getElementById('twTimerColor').oninput = (e) => {
             document.getElementById('twTimerHex').value = e.target.value;
-            autoSave();
+            autoSave(['countdownPreview']);
         };
         document.getElementById('twTimerHex').onchange = (e) => {
             document.getElementById('twTimerColor').value = e.target.value;
-            autoSave();
+            autoSave(['countdownPreview']);
         };
         document.getElementById('twTimerLabelColor').oninput = (e) => {
             document.getElementById('twTimerLabelHex').value = e.target.value;
-            autoSave();
+            autoSave(['countdownPreview']);
         };
         document.getElementById('twTimerLabelHex').onchange = (e) => {
             document.getElementById('twTimerLabelColor').value = e.target.value;
-            autoSave();
+            autoSave(['countdownPreview']);
         };
-        document.getElementById('twTimerSize').onchange = autoSave;
-        document.getElementById('twTimerLabelSize').onchange = autoSave;
+        document.getElementById('twTimerSize').onchange = () => autoSave(['countdownPreview']);
+        document.getElementById('twTimerLabelSize').onchange = () => autoSave(['countdownPreview']);
         
         // OBS Auto-save
         const saveObsSettings = async () => {
