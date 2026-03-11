@@ -25,14 +25,12 @@ app.post('/api/vods', async (c) => {
     let duration = '';
 
     try {
-      // Check both storage locations for a token
+      // Grab the saved access token and client ID
       const statsData = await c.env.RERUN_STORE.get('_twitch_stats_settings');
       const stats = statsData ? JSON.parse(statsData) : null;
-      const rawAuth = await c.env.RERUN_STORE.get('_twitch_token');
-      const auth = rawAuth ? JSON.parse(rawAuth) : null;
 
-      const token = stats?.token || auth?.token;
-      const clientId = stats?.clientId || auth?.clientId || 'ue6666qo983tsx6so1t0vnawi233wa';
+      const token = stats?.token;
+      const clientId = stats?.clientId || 'ue6666qo983tsx6so1t0vnawi233wa';
 
       const headers: Record<string, string> = { 'Client-ID': clientId };
       if (token) headers['Authorization'] = `Bearer ${token.replace('oauth:', '')}`;
@@ -563,12 +561,17 @@ app.get('/overlay/recent-followers', (c) => {
         </div>
     </div>
     <script>
+        let currentInterval = 30;
+
         async function fetchFollowers() {
             try {
                 const statRes = await fetch('/api/twitch/stats/settings');
                 const statData = await statRes.json();
                 if (statData && statData.scrollSpeed) {
                     document.querySelector('.marquee').style.animationDuration = statData.scrollSpeed + 's';
+                }
+                if (statData && statData.pollingInterval) {
+                     currentInterval = statData.pollingInterval;
                 }
 
                 const res = await fetch('/api/twitch/recent-followers');
@@ -578,14 +581,11 @@ app.get('/overlay/recent-followers', (c) => {
                 }
             } catch(e) {}
         }
+        
         let syncInterval = null;
         async function startSync() {
             await fetchFollowers();
-            const res = await fetch('/api/twitch/stats/settings');
-            const data = await res.json();
-            const interval = (data?.pollingInterval || 60) * 1000;
-            if (syncInterval) clearInterval(syncInterval);
-            syncInterval = setInterval(fetchFollowers, interval);
+            syncInterval = setInterval(fetchFollowers, currentInterval * 1000);
         }
         startSync();
     </script>
