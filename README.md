@@ -1,16 +1,17 @@
 # Twitch Rerun Manager 🎮
 
-A self-hosted Twitch VOD rerun system built with **Hono + Cloudflare Pages + KV**. Play your old VODs on loop through OBS with a VLC source, complete with live overlays and automatic stream category updates.
+A self-hosted Twitch VOD rerun system built entirely with **Hono + Cloudflare Pages + KV**. Play your old VODs on loop through OBS with a VLC source, complete with live overlays and automatic stream category updates. No React or Next.js required.
 
 ## Features
 
 - 📺 **VOD Playlist** — Add Twitch VOD URLs, auto-resolves stream URLs for VLC
 - ✅ **Enable/Disable VODs** — Toggle individual VODs without deleting them
-- 🎮 **OBS Remote Control** — Play, pause, stop, next, previous, shuffle via WebSocket
+- 🎮 **OBS Remote Control** — Play, pause, stop, next, previous, shuffle via WebSocket over Local or Remote tunnels.
 - 🔄 **Auto Category Update** — Automatically updates your Twitch stream category when a new VOD starts
-- 📊 **Follower & Sub Overlays** — Live browser source overlays with progress bars and goals
+- ⏳ **Countdown Overlay** — Dynamic "Going Live" countdown timer
+- 📊 **Follower & Sub Overlays** — Live browser source overlays with customizable progress bars and goals
 - ❤️ **Recent Followers Ticker** — Scrolling marquee of your latest followers
-- 🎨 **Fully Customizable** — Colors, sizes, scroll speed, follower count — all from the dashboard
+- 🎨 **Fully Customizable** — Colors, sizes, timezones, scroll speed, follower count — all visually configurable from the dashboard.
 
 ## Deploy Your Own (Cloudflare Pages)
 
@@ -42,26 +43,26 @@ binding = "RERUN_STORE"
 id = "YOUR_KV_ID_HERE"
 ```
 
-### 4. Build & Deploy
+### 4. Deploy
 
 ```bash
-npm run build
-npx wrangler pages deploy .next --project-name your-project-name
+# Deploys directly to Cloudflare Pages without compiling
+npm run deploy
 ```
 
 ### 5. Set Up the Dashboard
 
-1. Open your deployed URL
-2. Connect to OBS WebSocket (Tools → WebSocket Server Settings in OBS)
-3. Go to **Twitch Overlays** and enter your User Access Token
+1. Open your deployed URL.
+2. Connect to OBS WebSocket (Tools → WebSocket Server Settings in OBS).
+3. Go to **Twitch Access** and enter your User Access Token.
 
 ### Getting a Twitch Token
 
-Go to [twitchtokengenerator.com](https://twitchtokengenerator.com/) and generate a token with these scopes:
+Go to [twitchtokengenerator.com](https://twitchtokengenerator.com/) and generate a **Custom Bot Token** (or User Token) with these specific scopes required for the dashboard features:
 
-- `moderator:read:followers` — for follower count & recent followers
-- `channel:read:subscriptions` — for subscriber count
-- `channel:manage:broadcast` — for auto category updates
+- `moderator:read:followers` — Required for follower count & recent followers lists
+- `channel:read:subscriptions` — Required for subscriber counts
+- `channel:manage:broadcast` — Required for auto category updates when a new rerun starts
 
 ### Adding Overlays to OBS
 
@@ -69,24 +70,23 @@ Copy the overlay URLs from the dashboard and add them as **Browser Sources** in 
 
 | Overlay                 | Recommended Size |
 | ----------------------- | ---------------- |
-| Followers               | 300 × 80         |
-| Subscribers             | 300 × 80         |
-| Recent Followers Ticker | 1200 × 50        |
+| Followers Goal          | 280 × 80         |
+| Subscribers Goal        | 280 × 80         |
+| Recent Followers Ticker | 1200 × 60        |
+| Countdown Timer         | 800 × 120        |
 
-## Local Development
+## Local Development & Testing
+
+Since this project has been streamlined from Next.js to pure Cloudflare Pages functions, local development is instantaneous.
 
 ```bash
-# Run Next.js dev server (UI only)
+# Run with Cloudflare Workers runtime (full local test with KV emulation)
 npm run dev
-
-# Run with Cloudflare Workers runtime (full local test)
-npx wrangler pages dev .next
 ```
 
 ## Tech Stack
 
-- [Hono](https://hono.dev/) — Lightweight web framework for Cloudflare Workers
-- [Next.js](https://nextjs.org/) — Frontend build tool
-- [@cloudflare/next-on-pages](https://github.com/cloudflare/next-on-pages) — Adapter
-- [Cloudflare KV](https://developers.cloudflare.com/kv/) — Persistent storage
-- [obs-websocket-js](https://github.com/obs-websocket-community-projects/obs-websocket-js) — OBS remote control
+- [Hono](https://hono.dev/) — Lightweight web framework powering the backend routes and HTML injection.
+- [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/) — Serverless edge hosting.
+- [Cloudflare KV](https://developers.cloudflare.com/kv/) — Persistent key-value storage for dashboard settings and playlists.
+- [obs-websocket-js](https://github.com/obs-websocket-community-projects/obs-websocket-js) — Browser-side OBS remote control over WebSockets.
