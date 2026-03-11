@@ -1749,8 +1749,17 @@ app.get('/', (c) => {
             } catch(e) {}
         }
 
-        // Auto-save & sync
-        const autoSave = (previewIds) => saveTwitchStats(null, previewIds);
+        // Auto-save & sync with debounce to prevent Cloudflare KV rate limits
+        let saveTimeout = null;
+        let pendingPreviewIds = new Set();
+        const autoSave = (previewIds) => {
+            if (previewIds) previewIds.forEach(id => pendingPreviewIds.add(id));
+            if (saveTimeout) clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                saveTwitchStats(null, Array.from(pendingPreviewIds));
+                pendingPreviewIds.clear();
+            }, 600); // Wait 600ms before actually saving to group rapid slider movements
+        };
         
         document.getElementById('twFollowerColor').oninput = (e) => {
             document.getElementById('twFollowerHex').value = e.target.value;
