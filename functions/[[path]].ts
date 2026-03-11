@@ -1231,7 +1231,9 @@ app.get('/', (c) => {
                             }
                         </div>
                         <div class="vod-info" style="min-width: 0; flex: 1;">
-                            <div style="font-weight:600; margin-bottom: 0.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.95rem;">\${v.title}</div>
+                            <div style="font-weight:600; margin-bottom: 0.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.95rem;">
+                                <a href="https://twitch.tv/videos/\${v.id}" target="_blank" style="color: inherit; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">\${v.title}</a>
+                            </div>
                             <div style="font-size:0.75rem; color:#a1a1aa; line-height: 1;">\${v.author || 'Unknown'} &bull; \${v.duration || '0s'}</div>
                             \${v.error ? \`<div style="font-size: 0.65rem; color: #ef4444; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">\${v.error}</div>\` : ''}
                         </div>
