@@ -1,6 +1,6 @@
 name = "twitch-rerun"
 compatibility_date = "2024-04-01"
-pages_build_output_dir = ".next"
+pages_build_output_dir = "public"
 
 [[kv_namespaces]]
 binding = "RERUN_STORE"
